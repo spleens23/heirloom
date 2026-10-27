@@ -1,0 +1,23 @@
+# Heirloom's default settings. Anything you change in Settings overrides these.
+
+[org/gnome/shell]
+enabled-extensions=['harbor-tablet@harbor.dev']
+favorite-apps=['dev.harbor.Harbor.desktop', 'dev.spectacle.Spectacle.desktop', 'org.mozilla.firefox.desktop', 'org.gnome.Nautilus.desktop', 'com.valvesoftware.Steam.desktop', 'org.gnome.Ptyxis.desktop']
+welcome-dialog-last-shown-version='999'
+
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/heirloom/sky.svg'
+picture-uri-dark='file:///usr/share/backgrounds/heirloom/sky.svg'
+picture-options='zoom'
+
+[org/gnome/desktop/screensaver]
+picture-uri='file:///usr/share/backgrounds/heirloom/sky.svg'
+picture-options='zoom'
+
+[org/gnome/desktop/interface]
+color-scheme='default'
+accent-color='blue'
+clock-format='12h'
+
+[org/gnome/desktop/peripherals/touchpad]
+tap-to-click=true

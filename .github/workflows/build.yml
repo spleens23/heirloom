@@ -1,0 +1,47 @@
+# Builds the Heirloom system image and publishes it to GitHub's container
+# registry. Installed Heirloom machines get their updates from here.
+name: Build Heirloom
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "screenshots/**"]
+  schedule:
+    - cron: "17 7 * * *"   # daily, so Fedora fixes and yt-dlp stay fresh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-image
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/heirloom
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Make room on the build machine
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: |
+          podman build --pull=newer \
+            --tag "$IMAGE:latest" \
+            --tag "$IMAGE:$(date -u +%Y%m%d)" \
+            .
+
+      - name: Publish the image
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          podman push "$IMAGE:latest"
+          podman push "$IMAGE:$(date -u +%Y%m%d)"

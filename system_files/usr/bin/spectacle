@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Spectacle on Heirloom.
+#   spectacle          open the app
+#   spectacle update   get the newest yt-dlp (for when YouTube changes things)
+#
+# The system itself is read-only, so updates go into your home folder and take
+# priority over the built-in copy.
+LIB=/usr/lib/heirloom
+OVERRIDE="${XDG_DATA_HOME:-$HOME/.local/share}/heirloom/python"
+
+if [ "${1:-}" = "update" ]; then
+    mkdir -p "$OVERRIDE"
+    exec "$LIB/venv/bin/pip" install --no-cache-dir --upgrade --target "$OVERRIDE" yt-dlp
+fi
+
+export PYTHONPATH="$OVERRIDE:$LIB${PYTHONPATH:+:$PYTHONPATH}"
+[ -x "$OVERRIDE/bin/yt-dlp" ] && export SPECTACLE_YTDLP="$OVERRIDE/bin/yt-dlp"
+exec "$LIB/venv/bin/python" -m spectacle "$@"

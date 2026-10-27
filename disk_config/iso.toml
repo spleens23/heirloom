@@ -1,0 +1,9 @@
+# Settings for Heirloom's installer ISO.
+# The installer asks for your language, disk, and your user name and password.
+# Apps from Flathub and the link to Heirloom's updates are set up on first boot.
+
+[customizations.installer.modules]
+enable = [
+  "org.fedoraproject.Anaconda.Modules.Localization",
+  "org.fedoraproject.Anaconda.Modules.Users",
+]

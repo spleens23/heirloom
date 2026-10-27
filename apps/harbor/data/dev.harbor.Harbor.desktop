@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Harbor
+GenericName=Home Screen
+Comment=Your apps, a clock and a dock on a glossy home screen
+Exec=@LAUNCHER@
+Icon=dev.harbor.Harbor
+Terminal=false
+Categories=Utility;GTK;
+Keywords=home;launcher;apps;dock;
+StartupNotify=true
+StartupWMClass=dev.harbor.Harbor

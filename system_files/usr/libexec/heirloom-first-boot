@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Heirloom's one-time setup, run in the background once there's internet.
+# If something fails (say, no Wi-Fi yet), it simply tries again next boot.
+set -uo pipefail
+STAMP=/var/lib/heirloom/first-boot-done
+IMAGE=ghcr.io/spleens23/heirloom:latest
+mkdir -p /var/lib/heirloom
+ok=1
+
+# 1. Make sure updates come from Heirloom's own image on GitHub.
+current="$(bootc status --format=json 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin)["status"]["booted"]["image"]["image"]["image"])
+except Exception: print("")')"
+if [ "$current" != "$IMAGE" ]; then
+    bootc switch --mutate-in-place --transport registry "$IMAGE" || ok=0
+fi
+
+# 2. Apps from Flathub (Steam, office, and everyday GNOME apps).
+flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || ok=0
+flatpak remote-modify --system --enable --no-filter flathub || true
+APPS=(
+    com.valvesoftware.Steam          # games
+    org.libreoffice.LibreOffice      # documents for school
+    org.gnome.Calculator
+    org.gnome.Calendar
+    org.gnome.clocks
+    org.gnome.TextEditor
+    org.gnome.Loupe                  # photos
+    org.gnome.Papers                 # PDFs
+    org.gnome.Weather
+    io.github.celluloid_player.Celluloid   # your own video files
+    com.github.johnfactotum.Foliate        # ebooks
+)
+flatpak install --system --noninteractive -y flathub "${APPS[@]}" || ok=0
+
+if [ "$ok" = 1 ]; then
+    date > "$STAMP"
+fi

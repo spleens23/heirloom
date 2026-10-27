@@ -1,0 +1,192 @@
+/* Harbor — a glossy, light-blue home screen.
+ * Matches Spectacle's palette. Change colors here.
+ */
+
+@define-color sky_mid    #8cc4ef;
+@define-color sky_bottom #5fa6de;
+@define-color sky_edge   #3f84bd;
+@define-color ink        #2c3540;
+
+window.harbor {
+  /* the wallpaper itself is set from code (so you can pick your own) */
+  background-color: #8cc4ef;
+  background-size: cover;
+  background-position: center;
+  font-family: "Inter", "Cantarell", "Helvetica", sans-serif;
+}
+
+/* ---- status bar ------------------------------------------------------------ */
+.statusbar {
+  min-height: 30px;
+  padding: 0 10px;
+  background-image: linear-gradient(to bottom, rgba(255,255,255,0.55), rgba(255,255,255,0.25));
+  border-bottom: 1px solid rgba(255,255,255,0.6);
+  box-shadow: 0 1px 3px rgba(20,60,100,0.25);
+}
+.statusbar label { color: #1d4268; font-weight: 800; font-size: 13px; text-shadow: 0 1px rgba(255,255,255,0.8); }
+button.status-button {
+  min-height: 24px; min-width: 30px; padding: 0 6px;
+  border: none; background: none; box-shadow: none;
+  border-radius: 6px;
+  color: #1d4268;
+}
+button.status-button:active { background-color: rgba(255,255,255,0.45); }
+button.status-button image { -gtk-icon-shadow: 0 1px rgba(255,255,255,0.8); }
+
+/* skeuomorphic battery */
+levelbar.battery { min-width: 26px; }
+levelbar.battery trough {
+  min-height: 11px;
+  padding: 1px;
+  border: 1px solid #1d4268;
+  border-radius: 3px;
+  background-color: rgba(255,255,255,0.4);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.2);
+}
+levelbar.battery block { min-height: 9px; border-radius: 1px; border: none; }
+levelbar.battery block.filled { background-image: linear-gradient(to bottom, #9be08d, #3fa83a); }
+levelbar.battery.low block.filled { background-image: linear-gradient(to bottom, #f5a19b, #d0423a); }
+levelbar.battery block.empty { background: none; }
+.battery-nub { min-width: 2px; min-height: 5px; background-color: #1d4268; border-radius: 0 1px 1px 0; }
+
+/* ---- clock widget ------------------------------------------------------------ */
+.clock-panel {
+  padding: 14px 34px 16px 34px;
+  border-radius: 18px;
+  background-image: linear-gradient(to bottom, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.22) 50%, rgba(255,255,255,0.12) 51%, rgba(255,255,255,0.25) 100%);
+  border: 1px solid rgba(255,255,255,0.75);
+  box-shadow: 0 6px 18px rgba(20,60,100,0.25), inset 0 1px rgba(255,255,255,0.9);
+}
+.clock-time {
+  font-size: 64px;
+  font-weight: 300;
+  color: white;
+  text-shadow: 0 2px 4px rgba(20,60,100,0.55);
+  font-feature-settings: "tnum";
+}
+.clock-date {
+  font-size: 17px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 1px 2px rgba(20,60,100,0.6);
+}
+
+/* ---- app icons -------------------------------------------------------------- */
+button.app {
+  padding: 4px;
+  border: none;
+  background: none;
+  box-shadow: none;
+  transition: transform 120ms ease-out;
+}
+button.app:active { transform: scale(0.9); }
+button.app.launching { transform: scale(1.12); }
+
+.tile {
+  min-width: 72px;
+  min-height: 72px;
+  border-radius: 17px;
+  border: 1px solid rgba(30,70,110,0.45);
+  background-image: linear-gradient(to bottom, #ffffff 0%, #eef5fb 55%, #d3e5f4 100%);
+  box-shadow: 0 3px 6px rgba(10,40,70,0.45);
+}
+.tile image { -gtk-icon-shadow: 0 1px 1px rgba(0,0,0,0.25); }
+.gloss {
+  min-height: 36px;
+  border-radius: 16px 16px 40px 40px / 16px 16px 14px 14px;
+  background-image: linear-gradient(to bottom, rgba(255,255,255,0.85), rgba(255,255,255,0.15));
+}
+.app-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 1px 2px rgba(10,40,70,0.9);
+}
+.dock .app-label { color: #1d4268; text-shadow: 0 1px rgba(255,255,255,0.8); }
+
+/* ---- page dots ---------------------------------------------------------------- */
+carouselindicatordots { color: white; margin: 2px 0 4px 0; }
+
+/* ---- the dock: a glass shelf ------------------------------------------------- */
+.dock {
+  margin: 0 24px 22px 24px; /* room for the tablet home bar */
+  padding: 8px 18px 4px 18px;
+  border-radius: 20px;
+  background-image: linear-gradient(to bottom,
+      rgba(255,255,255,0.60) 0%, rgba(255,255,255,0.38) 50%,
+      rgba(225,238,250,0.28) 51%, rgba(255,255,255,0.45) 100%);
+  border: 1px solid rgba(255,255,255,0.85);
+  box-shadow: 0 8px 22px rgba(10,40,70,0.35), inset 0 1px white, inset 0 -2px rgba(63,132,189,0.25);
+}
+
+/* ---- search & menus ------------------------------------------------------------ */
+.search-sheet {
+  background-image: linear-gradient(to bottom, rgba(36,82,126,0.93), rgba(22,56,90,0.96));
+}
+entry.home-search {
+  min-height: 40px;
+  border-radius: 20px;
+  border: 1px solid #a8b4bf;
+  background-color: white;
+  box-shadow: inset 0 2px 3px rgba(0,0,0,0.18), 0 1px rgba(255,255,255,0.4);
+  padding: 0 14px;
+  font-size: 16px;
+  color: @ink;
+}
+.hint-light { color: white; text-shadow: 0 1px 2px rgba(10,40,70,0.8); font-weight: 700; }
+
+popover.app-menu > contents {
+  padding: 6px;
+  border-radius: 12px;
+  background-image: linear-gradient(to bottom, #fdfdfe, #e7edf2);
+  border: 1px solid #9aa6b1;
+  box-shadow: 0 6px 16px rgba(10,30,50,0.35);
+}
+button.menu-item {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: @ink;
+  font-weight: 700;
+}
+button.menu-item:hover, button.menu-item:active {
+  background-image: linear-gradient(to bottom, #8cc4ef, #4f93cc);
+  color: white;
+  text-shadow: 0 -1px rgba(20,60,100,0.5);
+}
+
+/* ---- settings sheet ---------------------------------------------------------- */
+window.harbor-settings {
+  background-color: #e4eaf0;
+  background-image: repeating-linear-gradient(90deg, #e7edf3 0px, #e7edf3 5px, #dfe6ed 5px, #dfe6ed 7px);
+  color: @ink;
+}
+.settings-title { font-size: 15px; font-weight: 800; color: #4f5d6b; text-shadow: 0 1px white; margin: 14px 4px 6px 4px; }
+list.grouped {
+  border-radius: 10px;
+  border: 1px solid #b9c4ce;
+  background-color: white;
+  box-shadow: 0 1px 3px rgba(30,50,70,0.15);
+}
+list.grouped > row { min-height: 50px; padding: 4px 12px; border-bottom: 1px solid #e1e6eb; }
+list.grouped > row:last-child { border-bottom: none; }
+button.glossy {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 9px;
+  border: 1px solid #3a78ad;
+  background-image: linear-gradient(to bottom, #b6dcf8 0%, #7fbbe9 50%, #63a3db 51%, #5598d2 100%);
+  box-shadow: inset 0 1px rgba(255,255,255,0.7), 0 2px 3px rgba(30,60,90,0.3);
+  color: white;
+  font-weight: 800;
+  text-shadow: 0 -1px rgba(20,60,100,0.6);
+}
+button.glossy.plain {
+  border-color: #9aa6b1;
+  background-image: linear-gradient(to bottom, #fdfdfe 0%, #e9edf1 50%, #dce2e8 51%, #d2d9e0 100%);
+  color: #4f5b67;
+  text-shadow: 0 1px white;
+}

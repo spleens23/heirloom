@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Harbor, Heirloom's home screen. Running it again brings Home to the front.
+export PYTHONPATH="/usr/lib/heirloom${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m harbor "$@"

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Spectacle
+GenericName=Video Player
+Comment=Watch your subscriptions, save for later, and download for offline
+Exec=@LAUNCHER@
+Icon=dev.spectacle.Spectacle
+Terminal=false
+Categories=AudioVideo;Video;Player;GTK;
+Keywords=video;youtube;subscriptions;watch;
+StartupNotify=true
+StartupWMClass=dev.spectacle.Spectacle

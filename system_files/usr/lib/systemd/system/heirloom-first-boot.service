@@ -1,0 +1,14 @@
+[Unit]
+Description=Heirloom first-boot setup (apps and updates)
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=!/var/lib/heirloom/first-boot-done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/heirloom-first-boot
+Nice=10
+TimeoutStartSec=1h
+
+[Install]
+WantedBy=multi-user.target

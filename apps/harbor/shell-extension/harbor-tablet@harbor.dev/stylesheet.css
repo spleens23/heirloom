@@ -1,0 +1,12 @@
+/* The little home bar along the bottom edge in tablet mode. */
+.harbor-home-bar {
+  width: 134px;
+  height: 5px;
+  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 3px rgba(10, 40, 70, 0.6);
+}
+.harbor-home-bar:active {
+  width: 160px;
+  background-color: rgba(255, 255, 255, 0.95);
+}
