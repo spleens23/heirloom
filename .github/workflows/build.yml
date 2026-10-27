@@ -54,3 +54,15 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           podman push "$IMAGE:latest"
           podman push "$IMAGE:$(date -u +%Y%m%d)"
+
+      - name: Check the image is public
+        if: github.event_name != 'pull_request'
+        run: |
+          # Installed machines download updates without a password, so the
+          # image must be public on GitHub's container registry.
+          podman logout ghcr.io || true
+          if skopeo inspect --no-creds "docker://$IMAGE:latest" > /dev/null 2>&1; then
+            echo "::notice title=Image is public::Heirloom machines can download updates."
+          else
+            echo "::warning title=Image is private::Make the 'heirloom' package public: github.com/${{ github.repository_owner }}?tab=packages → heirloom → Package settings → Change visibility → Public."
+          fi
