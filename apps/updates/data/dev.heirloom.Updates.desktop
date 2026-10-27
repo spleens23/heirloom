@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Software Update
+GenericName=Heirloom Updates
+Comment=Update Heirloom over the internet or from a USB stick, or undo an update
+Exec=@LAUNCHER@
+Icon=dev.heirloom.Updates
+Terminal=false
+Categories=System;Settings;GTK;
+Keywords=update;upgrade;usb;rollback;undo;heirloom;
+StartupNotify=true
+StartupWMClass=dev.heirloom.Updates

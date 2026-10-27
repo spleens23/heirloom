@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Heirloom's Software Update app.
+export PYTHONPATH="/usr/lib/heirloom${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m heirloom_updates "$@"

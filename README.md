@@ -38,9 +38,34 @@ and a bad update can be undone from the boot menu.
 
 ## Updates
 
-New images are built daily. GNOME Software offers them like any update, or run
-`sudo bootc upgrade` and restart. To undo the last update, pick the previous
-entry in the boot menu, or run `sudo bootc rollback`.
+You never need to reinstall to update. New versions are built every day, and
+your files and apps are never touched by an update.
+
+**Over the internet (automatic):** Heirloom downloads new versions quietly in
+the background. They take effect the next time you restart.
+
+**Software Update app:** open **Software Update** (also in Harbor's settings)
+to check, download and restart on your own schedule, or to undo an update.
+
+**From a USB stick** (no Wi-Fi, or a faster connection elsewhere):
+
+1. On any computer, open this repository's **Actions** tab → **Build USB
+   update** → **Run workflow**. When it finishes, download
+   **heirloom-usb-update** from the run and unzip it.
+2. Copy both files (`heirloom-update-….ociarchive` and `SHA256SUMS`) to a USB
+   stick formatted as **exFAT**. (The file is too big for FAT32.)
+3. On Heirloom, open **Software Update** → **Update from a USB Stick** → choose
+   the file. It's checked for damage, installed, and starts after a restart.
+   Afterwards Heirloom goes back to getting updates online on its own.
+
+**If an update causes trouble:**
+
+- Open **Software Update** → **Undo Last Update**, then restart.
+- If Heirloom won't start at all: turn it on and tap **Esc** while it starts
+  to show the startup menu, then pick the second entry (the version before).
+
+**From Terminal:** `heirloom-update status`, `check`, `apply`, `usb`,
+`rollback` and `restart` do the same things.
 
 ## Changing Heirloom
 
@@ -52,7 +77,8 @@ Everything that makes up the system is in this repository:
 | `build_files/build.sh` | Packages and setup steps run during the build |
 | `system_files/etc/dconf/db/local.d/00-heirloom` | Default settings: wallpaper, accent color, dock favorites |
 | `system_files/usr/libexec/heirloom-first-boot` | First-boot jobs, including the Flathub app list |
-| `apps/harbor`, `apps/spectacle` | The apps themselves |
+| `system_files/usr/bin/heirloom-update` | The update tool (internet, USB, undo) |
+| `apps/harbor`, `apps/spectacle`, `apps/updates` | The apps themselves |
 
 Commit a change and GitHub rebuilds the image; your installed machine picks it
 up with the next update.

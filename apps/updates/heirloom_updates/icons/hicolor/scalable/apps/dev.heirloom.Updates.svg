@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Software Update icon: an original glossy tile with two curved arrows
+       chasing each other around a soft light-blue center. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d6ecfd"/>
+      <stop offset="0.55" stop-color="#8cc4ef"/>
+      <stop offset="1" stop-color="#3f84bd"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.08"/>
+    </linearGradient>
+    <radialGradient id="disc" cx="0.45" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d9eaf8"/>
+    </radialGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#0b2e4f" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#tile)" stroke="#2f6c9f" stroke-width="3"/>
+  <g filter="url(#shadow)">
+    <circle cx="128" cy="132" r="76" fill="url(#disc)" stroke="#1f3f5c" stroke-width="6"/>
+    <!-- upper arrow -->
+    <path d="M80 122 A50 50 0 0 1 166 100" fill="none" stroke="#3f8acb" stroke-width="16" stroke-linecap="round"/>
+    <path d="M150 78 L184 96 L156 122 Z" fill="#3f8acb"/>
+    <!-- lower arrow -->
+    <path d="M176 142 A50 50 0 0 1 90 164" fill="none" stroke="#3f8acb" stroke-width="16" stroke-linecap="round"/>
+    <path d="M106 186 L72 168 L100 142 Z" fill="#3f8acb"/>
+  </g>
+  <path d="M15 64 Q15 15 64 15 H192 Q241 15 241 64 V100 Q128 128 15 100 Z" fill="url(#gloss)"/>
+</svg>

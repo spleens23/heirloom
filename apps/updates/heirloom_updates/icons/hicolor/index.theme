@@ -1,0 +1,10 @@
+[Icon Theme]
+Name=Hicolor
+Directories=scalable/apps
+
+[scalable/apps]
+Size=64
+MinSize=8
+MaxSize=512
+Type=Scalable
+Context=Applications

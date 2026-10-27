@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep Heirloom updates coming from GitHub (after a USB update)
+After=local-fs.target
+ConditionPathExists=!/etc/heirloom/no-track
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/heirloom-update track-github
+
+[Install]
+WantedBy=multi-user.target

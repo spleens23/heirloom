@@ -1,0 +1,45 @@
+# Packages the newest Heirloom as a single update file for a USB stick.
+# Run it from the Actions tab ("Build USB update" → "Run workflow"), then
+# download "heirloom-usb-update" from the finished run and unzip it onto a
+# USB stick formatted as exFAT (the file is bigger than FAT32 allows).
+name: Build USB update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/heirloom:latest
+
+jobs:
+  usb:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Make room on the build machine
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Package the newest Heirloom as an update file
+        run: |
+          mkdir -p output
+          name="heirloom-update-$(date -u +%Y%m%d).ociarchive"
+          skopeo copy "docker://$IMAGE" "oci-archive:output/$name"
+          cd output
+          sha256sum ./*.ociarchive | sed 's#  \./#  #' > SHA256SUMS
+          cat SHA256SUMS
+          ls -lh
+
+      - name: Upload the update file
+        uses: actions/upload-artifact@v4
+        with:
+          name: heirloom-usb-update
+          path: |
+            output/*.ociarchive
+            output/SHA256SUMS
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error

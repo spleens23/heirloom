@@ -17,6 +17,7 @@ dnf5 clean all
 mkdir -p "$LIB"
 cp -r "$CTX/apps/spectacle/spectacle" "$LIB/"
 cp -r "$CTX/apps/harbor/harbor" "$LIB/"
+cp -r "$CTX/apps/updates/heirloom_updates" "$LIB/"
 
 # Spectacle's helpers (yt-dlp and the mpv bindings) live in their own Python
 # environment. The image is rebuilt daily, so yt-dlp stays current.
@@ -27,10 +28,14 @@ find "$LIB" -name '__pycache__' -prune -exec rm -rf {} +
 
 install -Dm755 "$CTX/system_files/usr/bin/spectacle" /usr/bin/spectacle
 install -Dm755 "$CTX/system_files/usr/bin/harbor" /usr/bin/harbor
+install -Dm755 "$CTX/system_files/usr/bin/heirloom-updates" /usr/bin/heirloom-updates
 
-for app in spectacle:dev.spectacle.Spectacle harbor:dev.harbor.Harbor; do
-    dir="${app%%:*}"; id="${app##*:}"
-    sed "s|@LAUNCHER@|/usr/bin/$dir|" "$CTX/apps/$dir/data/$id.desktop" \
+# folder : app id : command
+for app in spectacle:dev.spectacle.Spectacle:spectacle \
+           harbor:dev.harbor.Harbor:harbor \
+           updates:dev.heirloom.Updates:heirloom-updates; do
+    IFS=: read -r dir id cmd <<< "$app"
+    sed "s|@LAUNCHER@|/usr/bin/$cmd|" "$CTX/apps/$dir/data/$id.desktop" \
         > "/usr/share/applications/$id.desktop"
     install -Dm644 "$CTX/apps/$dir/data/$id.svg" "/usr/share/icons/hicolor/scalable/apps/$id.svg"
 done
@@ -60,6 +65,23 @@ install -Dm755 "$CTX/system_files/usr/libexec/heirloom-first-boot" /usr/libexec/
 install -Dm644 "$CTX/system_files/usr/lib/systemd/system/heirloom-first-boot.service" \
     /usr/lib/systemd/system/heirloom-first-boot.service
 systemctl enable heirloom-first-boot.service
+
+# ---- 5. updates --------------------------------------------------------------------
+install -Dm755 "$CTX/system_files/usr/bin/heirloom-update" /usr/bin/heirloom-update
+install -Dm644 "$CTX/system_files/usr/lib/systemd/system/heirloom-track-github.service" \
+    /usr/lib/systemd/system/heirloom-track-github.service
+systemctl enable heirloom-track-github.service
+
+# Download updates quietly in the background; they take effect at the next
+# restart, so nothing changes under you while you're working.
+if [ -f /etc/rpm-ostreed.conf ] && grep -qE '^#?AutomaticUpdatePolicy=' /etc/rpm-ostreed.conf; then
+    sed -i -E 's/^#?AutomaticUpdatePolicy=.*/AutomaticUpdatePolicy=stage/' /etc/rpm-ostreed.conf
+elif [ -f /etc/rpm-ostreed.conf ]; then
+    printf 'AutomaticUpdatePolicy=stage\n' >> /etc/rpm-ostreed.conf
+else
+    printf '[Daemon]\nAutomaticUpdatePolicy=stage\n' > /etc/rpm-ostreed.conf
+fi
+systemctl enable rpm-ostreed-automatic.timer || true
 
 gtk-update-icon-cache -f -t /usr/share/icons/hicolor || true
 update-desktop-database /usr/share/applications || true

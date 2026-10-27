@@ -35,7 +35,11 @@ jobs:
       - name: Build the image
         run: |
           set +e
+          # A version like 44.20261027 shows in Software Update and Settings.
+          version="$(grep -oP 'FEDORA_VERSION=\K[0-9]+' Containerfile | head -1).$(date -u +%Y%m%d)"
           podman build --pull=newer \
+            --label "version=$version" \
+            --label "org.opencontainers.image.version=$version" \
             --tag "$IMAGE:latest" \
             --tag "$IMAGE:$(date -u +%Y%m%d)" \
             . 2>&1 | tee build.log

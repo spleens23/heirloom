@@ -3,19 +3,13 @@
 # If something fails (say, no Wi-Fi yet), it simply tries again next boot.
 set -uo pipefail
 STAMP=/var/lib/heirloom/first-boot-done
-IMAGE=ghcr.io/spleens23/heirloom:latest
 mkdir -p /var/lib/heirloom
 ok=1
 
-# 1. Make sure updates come from Heirloom's own image on GitHub.
-current="$(bootc status --format=json 2>/dev/null | python3 -c 'import json,sys
-try: print(json.load(sys.stdin)["status"]["booted"]["image"]["image"]["image"])
-except Exception: print("")')"
-if [ "$current" != "$IMAGE" ]; then
-    bootc switch --mutate-in-place --transport registry "$IMAGE" || ok=0
-fi
+# (Pointing updates at Heirloom's GitHub image is done at every boot by
+#  heirloom-track-github.service, so it also recovers after a USB update.)
 
-# 2. Apps from Flathub (Steam, office, and everyday GNOME apps).
+# Apps from Flathub (Steam, office, and everyday GNOME apps).
 flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || ok=0
 flatpak remote-modify --system --enable --no-filter flathub || true
 APPS=(

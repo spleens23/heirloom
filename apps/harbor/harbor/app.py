@@ -356,6 +356,15 @@ class SettingsWindow(Gtk.Window):
             none.add_css_class("dim-label")
             box.append(none)
 
+        # Heirloom's Software Update app, when it's installed.
+        updates = Gio.DesktopAppInfo.new("dev.heirloom.Updates.desktop")
+        if updates:
+            box.append(self._title("System"))
+            upd = Gtk.Button(label="Software Update…")
+            upd.add_css_class("glossy")
+            upd.connect("clicked", lambda *_: (updates.launch([], None), self.close()))
+            box.append(upd)
+
         # Leave
         box.append(self._title("Harbor"))
         quit_btn = Gtk.Button(label="Quit Harbor")
