@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Screenroom on Heirloom: films and TV shows. (Music is its own app, Parlor.)
+# The app ships inside the system image and is updated along with it.
+export CHROME_DESKTOP=dev.screenroom.Screenroom.desktop
+exec /usr/lib/screenroom/screenroom --edition=films --ozone-platform-hint=auto --enable-features=WaylandWindowDecorations "$@"

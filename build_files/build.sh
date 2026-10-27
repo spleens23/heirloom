@@ -6,11 +6,24 @@ CTX=/ctx
 LIB=/usr/lib/heirloom
 
 # ---- 1. system packages ------------------------------------------------------
-# mpv plays video inside Spectacle; ffmpeg merges downloads into one file.
-# Fedora's default codecs cover VP9/AV1/Opus, which is what Spectacle prefers.
+# mpv plays video inside Spectacle and Screenroom; ffmpeg merges downloads into one file.
+# Fedora's own ffmpeg leaves out H.264, HEVC, AC-3 and DTS, which most films use, so the full
+# ffmpeg comes from RPM Fusion (plus the Intel/AMD video drivers that decode those in hardware).
+FEDORA_RELEASE="$(rpm -E %fedora)"
 dnf5 install -y \
-    mpv mpv-libs ffmpeg-free \
+    "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA_RELEASE}.noarch.rpm" \
+    "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA_RELEASE}.noarch.rpm"
+dnf5 swap -y --allowerasing ffmpeg-free ffmpeg || dnf5 install -y --allowerasing ffmpeg
+dnf5 install -y --allowerasing \
+    mpv mpv-libs ffmpeg \
     python3-pip
+dnf5 install -y --allowerasing --skip-unavailable \
+    mesa-va-drivers-freeworld intel-media-driver
+# Screenroom/Parlor are Electron apps: the libraries Chromium needs, and the helpers its
+# subtitle tools use (reading DVD subtitles needs OCR).
+dnf5 install -y --skip-unavailable \
+    nss atk at-spi2-atk cups-libs libdrm mesa-libgbm alsa-lib libxkbcommon libXScrnSaver libXtst \
+    tesseract tesseract-langpack-eng python3-av python3-numpy python3-pillow
 dnf5 clean all
 
 # ---- 2. Heirloom's apps ----------------------------------------------------------
@@ -39,6 +52,9 @@ for app in spectacle:dev.spectacle.Spectacle:spectacle \
         > "/usr/share/applications/$id.desktop"
     install -Dm644 "$CTX/apps/$dir/data/$id.svg" "/usr/share/icons/hicolor/scalable/apps/$id.svg"
 done
+
+# Screenroom (films and TV) and Parlor (music), from the newest Screenroom release.
+bash "$CTX/build_files/screenroom.sh"
 
 # Tablet Mode extension, installed for everyone.
 cp -r "$CTX/apps/harbor/shell-extension/harbor-tablet@harbor.dev" \

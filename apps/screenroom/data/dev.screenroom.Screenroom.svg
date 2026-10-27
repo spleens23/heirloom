@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Screenroom app icon: an original glossy tile with a little cinema screen between drawn curtains,
+       a play triangle on the screen. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d6ecfd"/><stop offset="0.5" stop-color="#8cc4ef"/><stop offset="1" stop-color="#3f84bd"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/><stop offset="1" stop-color="#fff" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a3d52"/><stop offset="1" stop-color="#0f1b28"/>
+    </linearGradient>
+    <linearGradient id="curtain" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8e1f2a"/><stop offset="0.5" stop-color="#d0434d"/><stop offset="1" stop-color="#8e1f2a"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#0b2e4f" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#tile)" stroke="#2f6c9f" stroke-width="3"/>
+  <g filter="url(#shadow)">
+    <rect x="46" y="70" width="164" height="112" rx="10" fill="url(#screen)" stroke="#1f3f5c" stroke-width="8"/>
+    <path d="M115 104 L152 126 L115 148 Z" fill="#8cc4ef"/>
+    <path d="M42 62 H96 Q84 92 70 104 Q60 140 42 190 Z" fill="url(#curtain)"/>
+    <path d="M214 62 H160 Q172 92 186 104 Q196 140 214 190 Z" fill="url(#curtain)"/>
+    <rect x="36" y="56" width="184" height="14" rx="7" fill="#1f3f5c"/>
+    <rect x="62" y="196" width="132" height="10" rx="5" fill="#1f3f5c" opacity="0.8"/>
+  </g>
+  <path d="M15 64 Q15 15 64 15 H192 Q241 15 241 64 V112 Q128 140 15 112 Z" fill="url(#gloss)"/>
+</svg>

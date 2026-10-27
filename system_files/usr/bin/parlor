@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Parlor on Heirloom: your music. Its profiles and settings are its own (~/.config/parlor).
+export CHROME_DESKTOP=dev.screenroom.Parlor.desktop
+exec /usr/lib/screenroom/screenroom --edition=music --ozone-platform-hint=auto --enable-features=WaylandWindowDecorations "$@"

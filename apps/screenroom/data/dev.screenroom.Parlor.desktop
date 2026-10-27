@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Parlor
+GenericName=Music
+Comment=Your music collection: albums, artists and playlists
+Exec=@LAUNCHER@
+Icon=dev.screenroom.Parlor
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;albums;songs;artists;playlists;
+StartupNotify=true
+StartupWMClass=Parlor

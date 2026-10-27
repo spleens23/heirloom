@@ -14,6 +14,8 @@ AUTOSTART_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".confi
 # Shown in the dock the first time, if they're installed.
 DEFAULT_DOCK = [
     "dev.spectacle.Spectacle.desktop",
+    "dev.screenroom.Screenroom.desktop",
+    "dev.screenroom.Parlor.desktop",
     "org.mozilla.firefox.desktop", "firefox.desktop",
     "org.gnome.Nautilus.desktop",
     "org.gnome.Settings.desktop",

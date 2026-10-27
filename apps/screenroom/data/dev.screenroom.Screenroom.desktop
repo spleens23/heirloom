@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Screenroom
+GenericName=Films and TV
+Comment=Your films and TV shows, ready to watch
+Exec=@LAUNCHER@
+Icon=dev.screenroom.Screenroom
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=movies;films;tv;shows;watch;library;
+StartupNotify=true
+StartupWMClass=Screenroom

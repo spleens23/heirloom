@@ -2,7 +2,7 @@
 
 [org/gnome/shell]
 enabled-extensions=['harbor-tablet@harbor.dev']
-favorite-apps=['dev.harbor.Harbor.desktop', 'dev.spectacle.Spectacle.desktop', 'org.mozilla.firefox.desktop', 'org.gnome.Nautilus.desktop', 'com.valvesoftware.Steam.desktop', 'org.gnome.Ptyxis.desktop']
+favorite-apps=['dev.harbor.Harbor.desktop', 'dev.spectacle.Spectacle.desktop', 'dev.screenroom.Screenroom.desktop', 'dev.screenroom.Parlor.desktop', 'org.mozilla.firefox.desktop', 'org.gnome.Nautilus.desktop', 'com.valvesoftware.Steam.desktop', 'org.gnome.Ptyxis.desktop']
 welcome-dialog-last-shown-version='999'
 
 [org/gnome/desktop/background]
