@@ -41,7 +41,7 @@ cp -r "$CTX/apps/harbor/shell-extension/harbor-tablet@harbor.dev" \
 
 # ---- 3. look, defaults and branding ----------------------------------------------
 cp -r "$CTX/system_files/etc/." /etc/
-cp -r "$CTX/system_files/usr/share/." /usr/share/
+[ -d "$CTX/system_files/usr/share" ] && cp -r "$CTX/system_files/usr/share/." /usr/share/
 install -Dm644 "$CTX/apps/harbor/harbor/wallpaper.svg" /usr/share/backgrounds/heirloom/sky.svg
 dconf update
 
