@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Heirloom Weather icon: an original glossy tile with a sun behind a soft cloud. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d6ecfd"/><stop offset="0.5" stop-color="#8cc4ef"/><stop offset="1" stop-color="#3f84bd"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.85"/><stop offset="1" stop-color="#fff" stop-opacity="0.08"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.4" cy="0.35" r="0.65">
+      <stop offset="0" stop-color="#fff6c4"/><stop offset="0.6" stop-color="#ffc947"/><stop offset="1" stop-color="#f29a1f"/>
+    </radialGradient>
+    <linearGradient id="cloud" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dbe8f4"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#0b2e4f" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="url(#tile)" stroke="#2f6c9f" stroke-width="3"/>
+  <g filter="url(#shadow)">
+    <g stroke="#ffc947" stroke-width="9" stroke-linecap="round">
+      <path d="M150 46 v-14 M190 62 l10 -10 M206 102 h14 M110 62 l-10 -10"/>
+    </g>
+    <circle cx="150" cy="104" r="40" fill="url(#sun)"/>
+    <path d="M70 190 h112 a34 34 0 0 0 0 -68 a44 44 0 0 0 -84 10 a30 30 0 0 0 -28 58 z" fill="url(#cloud)" stroke="#9fb6cc" stroke-width="3"/>
+  </g>
+  <path d="M15 64 Q15 15 64 15 H192 Q241 15 241 64 V112 Q128 140 15 112 Z" fill="url(#gloss)"/>
+</svg>

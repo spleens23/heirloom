@@ -16,10 +16,11 @@ CLOCK_ROWS = 2              # rows the clock takes on the first page
 # ---- one app icon ---------------------------------------------------------
 
 class AppIcon(Gtk.Button):
-    def __init__(self, home, info: Gio.DesktopAppInfo, in_dock=False):
+    def __init__(self, home, info: Gio.DesktopAppInfo, in_dock=False, folder: str | None = None):
         super().__init__()
         self.home = home
         self.info = info
+        self.folder = folder
         self.add_css_class("app")
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, halign=Gtk.Align.CENTER)
@@ -63,6 +64,59 @@ class AppIcon(Gtk.Button):
         err = appsmod.launch(self.info, self)
         if err:
             self.home.toast(f"Couldn't open {self.info.get_display_name()}")
+
+
+# ---- a folder icon: a glass tile with tiny icons of what's inside -----------
+
+class FolderIcon(Gtk.Button):
+    def __init__(self, home, folder):
+        super().__init__()
+        self.home = home
+        self.folder = folder
+        self.info = None
+        self.add_css_class("app")
+        self.add_css_class("folder")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, halign=Gtk.Align.CENTER)
+        tile = Gtk.Overlay(halign=Gtk.Align.CENTER)
+        bg = Gtk.Box()
+        bg.add_css_class("tile")
+        bg.add_css_class("folder-tile")
+        bg.set_size_request(72, 72)
+        tile.set_child(bg)
+        minis = Gtk.Grid(row_spacing=3, column_spacing=3, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        for n, info in enumerate(folder.apps[:9]):
+            img = Gtk.Image(pixel_size=16)
+            icon = info.get_icon()
+            if icon:
+                img.set_from_gicon(icon)
+            else:
+                img.set_from_icon_name("application-x-executable")
+            minis.attach(img, n % 3, n // 3, 1, 1)
+        minis.set_can_target(False)
+        tile.add_overlay(minis)
+        gloss = Gtk.Box(valign=Gtk.Align.START, margin_start=1, margin_end=1, margin_top=1)
+        gloss.add_css_class("gloss")
+        gloss.set_can_target(False)
+        tile.add_overlay(gloss)
+        box.append(tile)
+        label = Gtk.Label(label=folder.name, ellipsize=Pango.EllipsizeMode.END, max_width_chars=11,
+                          justify=Gtk.Justification.CENTER)
+        label.add_css_class("app-label")
+        box.append(label)
+        self.set_child(box)
+
+        self.connect("clicked", lambda *_: home.open_folder(folder.fid))
+        hold = Gtk.GestureLongPress()
+        hold.connect("pressed", lambda *_: home.show_folder_menu(self))
+        self.add_controller(hold)
+        right = Gtk.GestureClick(button=3)
+        right.connect("pressed", lambda *_: home.show_folder_menu(self))
+        self.add_controller(right)
+
+
+def icon_for(home, item):
+    return FolderIcon(home, item) if isinstance(item, appsmod.Folder) else AppIcon(home, item)
 
 
 # ---- status bar -------------------------------------------------------------
@@ -173,6 +227,21 @@ class Pages(Gtk.Widget):
         self.inner.append(self.dots)
         self._grid = (0, 0)
         self.clock = Clock()
+        # Tap and hold an empty spot on Home: wallpaper and settings.
+        hold = Gtk.GestureLongPress()
+        hold.connect("pressed", self._hold_empty)
+        self.add_controller(hold)
+        right = Gtk.GestureClick(button=3)
+        right.connect("pressed", lambda g, n, x, y: self._hold_empty(g, x, y))
+        self.add_controller(right)
+
+    def _hold_empty(self, _g, x, y):
+        w = self.pick(x, y, Gtk.PickFlags.DEFAULT)
+        while w is not None and w is not self:
+            if isinstance(w, (AppIcon, FolderIcon)):
+                return  # the icon shows its own menu
+            w = w.get_parent()
+        self.home.show_home_menu(self, x, y)
 
     def do_measure(self, orientation, for_size):
         _min, nat, _mb, _nb = self.inner.measure(orientation, for_size)
@@ -223,7 +292,7 @@ class Pages(Gtk.Widget):
             grid = Gtk.Grid(column_homogeneous=True, halign=Gtk.Align.FILL, hexpand=True,
                             valign=Gtk.Align.START)
             for n, info in enumerate(chunk):
-                cell = AppIcon(self.home, info)
+                cell = icon_for(self.home, info)
                 cell.set_size_request(CELL_W, CELL_H)
                 grid.attach(cell, n % cols, n // cols, 1, 1)
             # Fill short rows so icons stay aligned to the same columns.

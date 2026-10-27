@@ -1,8 +1,15 @@
 {
   "uuid": "harbor-tablet@harbor.dev",
   "name": "Harbor Tablet Mode",
-  "description": "Fold your 2-in-1 into a tablet and Harbor becomes your home screen: the Super key and a swipe up from the bottom edge go Home, and apps open full size. Open it back into a laptop for a normal desktop.",
-  "shell-version": ["46", "47", "48", "49", "50", "51"],
-  "version": 1,
+  "description": "Fold your 2-in-1 into a tablet and Harbor becomes your home screen: apps open full screen, a swipe up from the bottom edge closes the app, a pull down from the top edge shows the top bar, and three fingers up twice makes a new desktop. Open it back into a laptop for a normal desktop.",
+  "shell-version": [
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "version": 2,
   "url": ""
 }

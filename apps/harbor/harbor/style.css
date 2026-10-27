@@ -190,3 +190,39 @@ button.glossy.plain {
   color: #4f5b67;
   text-shadow: 0 1px white;
 }
+
+/* ---- folders ------------------------------------------------------------------ */
+.tile.folder-tile {
+  background-image: linear-gradient(to bottom, rgba(255,255,255,0.62), rgba(225,238,250,0.38));
+  border: 1px solid rgba(255,255,255,0.9);
+  box-shadow: 0 3px 8px rgba(10,40,70,0.3), inset 0 1px white;
+}
+.folder-sheet { background-color: rgba(18,48,80,0.45); }
+.folder-card {
+  padding: 16px 22px 20px 22px;
+  border-radius: 26px;
+  background-image: linear-gradient(to bottom,
+      rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.5) 50%,
+      rgba(225,238,250,0.42) 51%, rgba(255,255,255,0.58) 100%);
+  border: 1px solid rgba(255,255,255,0.9);
+  box-shadow: 0 14px 40px rgba(10,30,60,0.45), inset 0 1px white;
+}
+.folder-card .app-label { color: #1d4268; text-shadow: 0 1px rgba(255,255,255,0.8); }
+entry.folder-name {
+  min-height: 36px;
+  border: none; box-shadow: none; background: none;
+  font-size: 22px; font-weight: 800;
+  color: #1d4268; text-shadow: 0 1px rgba(255,255,255,0.8);
+}
+entry.folder-name:focus-within { background-color: rgba(255,255,255,0.6); border-radius: 10px; }
+
+/* ---- wallpaper choices ------------------------------------------------------- */
+button.wallpaper-swatch {
+  padding: 4px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background: none; box-shadow: none;
+  font-weight: 700; color: @ink;
+}
+button.wallpaper-swatch picture { border-radius: 7px; box-shadow: 0 2px 5px rgba(10,40,70,0.3); }
+button.wallpaper-swatch.chosen { border-color: #4f93cc; background-color: rgba(79,147,204,0.15); }

@@ -12,9 +12,11 @@ and a bad update can be undone from the boot menu.
   Super key or a swipe up from the bottom edge goes Home
 - **Spectacle**, a video app with subscriptions, Watch Later and downloads
 - **Screenroom**, your own films and TV shows, and **Parlor**, your music (from [Screenroom](https://github.com/spleens23/screenroom); updated with the system)
+- **Weather**, which finds any city (forecasts from Open-Meteo)
 - Full video codecs (H.264, HEVC, AC-3, DTS) from RPM Fusion
+- Starts without flashing the boot menu (hold Esc while starting to see it)
 - On first boot (with Wi-Fi): Steam, LibreOffice, Calculator, Calendar, Clocks,
-  Text Editor, Photos, PDFs, Weather, Celluloid and Foliate from Flathub
+  Text Editor, Photos, PDFs, Celluloid and Foliate from Flathub
 - Fedora's GNOME underneath: Files, Terminal, Firefox, Settings, Software
 
 ## Getting the installer

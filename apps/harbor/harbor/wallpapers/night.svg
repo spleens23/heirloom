@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1200" viewBox="0 0 1920 1200">
+  <!-- Harbor wallpaper (night): the sky wallpaper in other colors with a
+       warm glow, gentle rolling hills of light, and fine linen texture. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f1d3a"/>
+      <stop offset="0.45" stop-color="#253f73"/>
+      <stop offset="1" stop-color="#4a6aa3"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.7" cy="0.28" r="0.55">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.75"/>
+      <stop offset="0.35" stop-color="#c9d8ff" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hill1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="hill2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c3463" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#0d1a35" stop-opacity="0.15"/>
+    </linearGradient>
+    <pattern id="linen" width="6" height="6" patternUnits="userSpaceOnUse">
+      <rect width="6" height="6" fill="none"/>
+      <path d="M0 0.5h6M0 3.5h6" stroke="#ffffff" stroke-opacity="0.07" stroke-width="1"/>
+      <path d="M0.5 0v6M3.5 0v6" stroke="#000814" stroke-opacity="0.05" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1920" height="1200" fill="url(#sky)"/>
+  <rect width="1920" height="1200" fill="url(#glow)"/>
+  <path d="M0 820 C 380 700, 760 760, 1100 820 S 1700 900, 1920 780 V1200 H0 Z" fill="url(#hill1)"/>
+  <path d="M0 940 C 420 860, 900 990, 1300 930 S 1760 860, 1920 920 V1200 H0 Z" fill="url(#hill2)"/>
+  <path d="M0 1040 C 500 990, 1000 1080, 1500 1030 S 1840 1010, 1920 1040 V1200 H0 Z" fill="#ffffff" fill-opacity="0.18"/>
+  <rect width="1920" height="1200" fill="url(#linen)"/>
+</svg>

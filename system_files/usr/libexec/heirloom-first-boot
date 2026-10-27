@@ -21,7 +21,6 @@ APPS=(
     org.gnome.TextEditor
     org.gnome.Loupe                  # photos
     org.gnome.Papers                 # PDFs
-    org.gnome.Weather
     io.github.celluloid_player.Celluloid   # your own video files
     com.github.johnfactotum.Foliate        # ebooks
 )

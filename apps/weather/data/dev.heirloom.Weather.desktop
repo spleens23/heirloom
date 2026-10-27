@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Weather
+Comment=Today's weather, the next hours and the week, for any city
+Exec=@LAUNCHER@
+Icon=dev.heirloom.Weather
+Terminal=false
+Categories=Utility;GTK;
+Keywords=weather;forecast;temperature;rain;city;
+StartupNotify=true
+StartupWMClass=dev.heirloom.Weather

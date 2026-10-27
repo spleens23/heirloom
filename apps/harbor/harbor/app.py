@@ -11,15 +11,36 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
+gi.require_version("Graphene", "1.0")
+from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gtk, Pango  # noqa: E402
 
 from . import APP_ID, APP_NAME  # noqa: E402
 from . import apps as appsmod  # noqa: E402
 from .config import DEFAULT_DOCK, Config  # noqa: E402
-from .home import AppIcon, Dock, Pages, StatusBar  # noqa: E402
+from .home import AppIcon, Dock, FolderIcon, Pages, StatusBar  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 MAX_DOCK = 6
+WALLPAPERS = [("sky", "Sky"), ("dusk", "Dusk"), ("sea", "Sea"), ("meadow", "Meadow"), ("night", "Night")]
+
+
+def wallpaper_path(name: str) -> Path:
+    p = HERE / "wallpapers" / f"{name}.svg"
+    return p if p.exists() else HERE / "wallpaper.svg"
+
+
+def set_system_background(path: str):
+    """Use the same picture for GNOME's desktop (laptop mode) and lock screen."""
+    uri = Gio.File.new_for_path(path).get_uri()
+    for schema, keys in (("org.gnome.desktop.background", ("picture-uri", "picture-uri-dark")),
+                         ("org.gnome.desktop.screensaver", ("picture-uri",))):
+        source = Gio.SettingsSchemaSource.get_default()
+        if not source or not source.lookup(schema, True):
+            continue
+        settings = Gio.Settings.new(schema)
+        for key in keys:
+            if settings.props.settings_schema.has_key(key):
+                settings.set_string(key, uri)
 
 
 class HarborApp(Adw.Application):
@@ -79,6 +100,9 @@ class HomeWindow(Adw.ApplicationWindow):
 
         self.search_sheet = self._build_search()
         self.overlay.add_overlay(self.search_sheet)
+        self.folder_sheet = self._build_folder_sheet()
+        self.overlay.add_overlay(self.folder_sheet)
+        self._open_folder_id = None
 
         self._apply_wallpaper()
         self.reload_apps()
@@ -109,9 +133,18 @@ class HomeWindow(Adw.ApplicationWindow):
         return {a.get_id(): a for a in self._all_apps}
 
     def grid_apps(self):
+        """What's on the Home pages: apps (not in the dock or a folder) and folders."""
         dock = set(self.config.dock or [])
-        apps = [a for a in self._all_apps if a.get_id() not in dock]
-        return appsmod.ordered(apps, self.config.order, self.config.hidden)
+        in_folders = {a for f in self.config.folders.values() for a in f["apps"]}
+        hidden = set(self.config.hidden)
+        apps = [a for a in self._all_apps if a.get_id() not in dock and a.get_id() not in in_folders]
+        by_id = self._by_id()
+        folders = []
+        for fid, f in self.config.folders.items():
+            members = [by_id[i] for i in f["apps"] if i in by_id and i not in hidden]
+            if members:  # a folder whose apps were all uninstalled stays out of sight
+                folders.append(appsmod.Folder(fid, f["name"], members))
+        return appsmod.ordered(apps + folders, self.config.order, self.config.hidden)
 
     def dock_apps(self):
         by_id = self._by_id()
@@ -128,9 +161,13 @@ class HomeWindow(Adw.ApplicationWindow):
 
     def go_home(self):
         self.close_search()
+        self.close_folder()
         self.pages.go_first()
 
     def _key(self, _c, keyval, _code, state):
+        if self.folder_sheet.get_visible() and keyval == Gdk.KEY_Escape:
+            self.close_folder()
+            return True
         if self.search_sheet.get_visible():
             if keyval == Gdk.KEY_Escape:
                 self.close_search()
@@ -146,37 +183,76 @@ class HomeWindow(Adw.ApplicationWindow):
     # ---- wallpaper --------------------------------------------------------
     def _apply_wallpaper(self):
         path = self.config.wallpaper
+        if path and not path.startswith("/"):
+            path = str(wallpaper_path(path))  # one of Harbor's own, by name
         if not path or not Path(path).exists():
             path = str(HERE / "wallpaper.svg")
         uri = Gio.File.new_for_path(path).get_uri()
         self._wall_css.load_from_string(f'window.harbor {{ background-image: url("{uri}"); }}')
 
-    # ---- long-press menu ----------------------------------------------------
-    def show_menu(self, icon: AppIcon, in_dock: bool):
-        aid = icon.info.get_id()
+    # ---- long-press menus -----------------------------------------------------
+    def _popover(self, anchor, items, rect=None):
         pop = Gtk.Popover(has_arrow=True, position=Gtk.PositionType.TOP)
         pop.add_css_class("app-menu")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        items = []
-        if in_dock:
-            items.append(("Remove from Dock", lambda: self._dock_remove(aid)))
-            items.append(("Move Left", lambda: self._dock_move(aid, -1)))
-            items.append(("Move Right", lambda: self._dock_move(aid, 1)))
-        else:
-            items.append(("Add to Dock", lambda: self._dock_add(aid)))
-            items.append(("Move Earlier", lambda: self._grid_move(aid, -1)))
-            items.append(("Move Later", lambda: self._grid_move(aid, 1)))
-            items.append(("Hide from Home", lambda: self._hide(aid)))
         for label, fn in items:
             b = Gtk.Button(label=label)
             b.add_css_class("menu-item")
             b.get_child().set_xalign(0)
-            b.connect("clicked", lambda *_, f=fn: (pop.popdown(), f()))
+            b.connect("clicked", lambda *_, f=fn: (pop.popdown(), GLib.idle_add(lambda: (f(), False)[1])))
             box.append(b)
         pop.set_child(box)
-        pop.set_parent(icon)
+        pop.set_parent(anchor)
+        if rect is not None:
+            pop.set_pointing_to(rect)
         pop.connect("closed", lambda p: GLib.idle_add(lambda: (p.unparent(), False)[1]))
         pop.popup()
+        return pop
+
+    def show_menu(self, icon: AppIcon, in_dock: bool):
+        aid = icon.info.get_id()
+        items = []
+        if icon.folder:
+            items.append(("Take Out of Folder", lambda: self._folder_take_out(aid)))
+            items.append(("Add to Dock", lambda: (self._folder_take_out(aid, quiet=True), self._dock_add(aid))))
+            items.append(("Hide from Home", lambda: (self.close_folder(), self._hide(aid))))
+        elif in_dock:
+            items.append(("Remove from Dock", lambda: self._dock_remove(aid)))
+            items.append(("Move Left", lambda: self._dock_move(aid, -1)))
+            items.append(("Move Right", lambda: self._dock_move(aid, 1)))
+        else:
+            items.append(("Add to Folder…", lambda: self._folder_picker(icon)))
+            items.append(("Add to Dock", lambda: self._dock_add(aid)))
+            items.append(("Move Earlier", lambda: self._grid_move(aid, -1)))
+            items.append(("Move Later", lambda: self._grid_move(aid, 1)))
+            items.append(("Hide from Home", lambda: self._hide(aid)))
+        self._popover(icon, items)
+
+    def show_folder_menu(self, icon: FolderIcon):
+        fid = icon.folder.fid
+        self._popover(icon, [
+            ("Open", lambda: self.open_folder(fid)),
+            ("Rename…", lambda: self.open_folder(fid, rename=True)),
+            ("Move Earlier", lambda: self._grid_move(fid, -1)),
+            ("Move Later", lambda: self._grid_move(fid, 1)),
+            ("Remove Folder (keep the apps)", lambda: self._folder_remove(fid)),
+        ])
+
+    def show_home_menu(self, widget, x, y):
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
+        self._popover(widget, [
+            ("Change Wallpaper…", self.open_settings),
+            ("Search Apps", self.open_search),
+            ("Harbor Settings…", self.open_settings),
+        ], rect)
+
+    def _folder_picker(self, icon: AppIcon):
+        aid = icon.info.get_id()
+        items = [(f"Into “{f['name']}”", lambda fid=fid: self._folder_add(fid, aid))
+                 for fid, f in self.config.folders.items()]
+        items.append(("New Folder", lambda: self._folder_new(aid)))
+        self._popover(icon, items)
 
     def _save_and_rebuild(self):
         self.config.save()
@@ -202,6 +278,7 @@ class HomeWindow(Adw.ApplicationWindow):
         self._save_and_rebuild()
 
     def _grid_move(self, aid, step):
+        # (aid may be an app or a folder)
         order = [a.get_id() for a in self.grid_apps()]
         i = order.index(aid)
         j = max(0, min(len(order) - 1, i + step))
@@ -213,6 +290,103 @@ class HomeWindow(Adw.ApplicationWindow):
         self.config.hidden.append(aid)
         self._save_and_rebuild()
         self.toast("Hidden — bring it back in Harbor settings")
+
+    # ---- folders -----------------------------------------------------------------
+    def _remember_order(self):
+        """Pin the current Home order, so a new folder lands where its first app was."""
+        self.config.order = [a.get_id() for a in self.grid_apps()]
+
+    def _folder_new(self, aid):
+        self._remember_order()
+        fid = self.config.new_folder(appsmod.folder_name_for(self._by_id().get(aid)), aid)
+        self._save_and_rebuild()
+        self.open_folder(fid, rename=True)
+
+    def _folder_add(self, fid, aid):
+        self.config.put_in(fid, aid)
+        self._save_and_rebuild()
+        self.toast(f"Added to “{self.config.folders[fid]['name']}”")
+
+    def _folder_take_out(self, aid, quiet=False):
+        fid = self.config.folder_of(aid)
+        if not fid:
+            return
+        self._remember_order()
+        pos = self.config.order.index(fid) + 1 if fid in self.config.order else len(self.config.order)
+        self.config.take_out(aid)
+        self.config.order.insert(min(pos, len(self.config.order)), aid)
+        self._save_and_rebuild()
+        if fid in self.config.folders and self._open_folder_id == fid:
+            self.open_folder(fid)
+        else:
+            self.close_folder()
+        if not quiet:
+            self.toast("Moved to Home")
+
+    def _folder_remove(self, fid):
+        self._remember_order()
+        self.config.remove_folder(fid)
+        self.close_folder()
+        self._save_and_rebuild()
+
+    def _build_folder_sheet(self):
+        sheet = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, visible=False)
+        sheet.add_css_class("folder-sheet")
+        self.folder_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
+                                   halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, vexpand=True)
+        self.folder_card.add_css_class("folder-card")
+        self.folder_name = Gtk.Entry(halign=Gtk.Align.CENTER, xalign=0.5, width_chars=18)
+        self.folder_name.add_css_class("folder-name")
+        self.folder_name.connect("changed", lambda e: self._rename_folder(e.get_text()))
+        self.folder_name.connect("activate", lambda *_: self.folder_grid.grab_focus())
+        self.folder_card.append(self.folder_name)
+        self.folder_grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                                       min_children_per_line=3, max_children_per_line=4,
+                                       halign=Gtk.Align.CENTER)
+        self.folder_card.append(self.folder_grid)
+        sheet.append(self.folder_card)
+        # Tapping outside the card closes the folder.
+        tap = Gtk.GestureClick()
+        tap.connect("released", self._folder_sheet_tap)
+        sheet.add_controller(tap)
+        return sheet
+
+    def _folder_sheet_tap(self, gesture, _n, x, y):
+        ok, bounds = self.folder_card.compute_bounds(self.folder_sheet)
+        if ok and not bounds.contains_point(Graphene.Point().init(x, y)):
+            self.close_folder()
+
+    def open_folder(self, fid, rename=False):
+        folder = self.config.folders.get(fid)
+        if not folder:
+            return
+        self._open_folder_id = None  # don't save while filling in the name
+        self.folder_name.set_text(folder["name"])
+        self._open_folder_id = fid
+        self.folder_grid.remove_all()
+        by_id = self._by_id()
+        for aid in folder["apps"]:
+            if aid in by_id and aid not in self.config.hidden:
+                icon = AppIcon(self, by_id[aid], folder=fid)
+                icon.connect("clicked", lambda *_: self.close_folder())
+                self.folder_grid.append(icon)
+        self.folder_sheet.set_visible(True)
+        if rename:
+            self.folder_name.grab_focus()
+            self.folder_name.select_region(0, -1)
+
+    def close_folder(self):
+        if not self.folder_sheet.get_visible():
+            return
+        self.folder_sheet.set_visible(False)
+        self._open_folder_id = None
+        self.pages.rebuild()
+
+    def _rename_folder(self, text):
+        fid = self._open_folder_id
+        if fid and fid in self.config.folders:
+            self.config.folders[fid]["name"] = text.strip() or "Folder"
+            self.config.save()
 
     # ---- search -------------------------------------------------------------
     def _build_search(self):
@@ -308,18 +482,33 @@ class SettingsWindow(Gtk.Window):
         outer.set_child(box)
         self.set_child(outer)
 
-        # Wallpaper
+        # Wallpaper: Harbor's own, or any picture
         box.append(self._title("Wallpaper"))
-        row = Gtk.Box(spacing=10)
+        gallery = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                              min_children_per_line=3, max_children_per_line=5, column_spacing=8, row_spacing=8)
+        self._swatches = {}
+        for name, label in WALLPAPERS:
+            b = Gtk.Button(tooltip_text=label)
+            b.add_css_class("wallpaper-swatch")
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            pic = Gtk.Picture.new_for_filename(str(wallpaper_path(name)))
+            pic.set_content_fit(Gtk.ContentFit.COVER)
+            pic.set_size_request(120, 76)
+            inner.append(pic)
+            inner.append(Gtk.Label(label=label))
+            b.set_child(inner)
+            b.connect("clicked", lambda *_, n=name: self._set_wallpaper(n))
+            gallery.append(b)
+            self._swatches[name] = b
+        box.append(gallery)
+        self._mark_wallpaper()
+        row = Gtk.Box(spacing=10, margin_top=6)
         pick = Gtk.Button(label="Choose Picture…")
         pick.add_css_class("glossy")
         pick.connect("clicked", lambda *_: self._choose_wallpaper())
         row.append(pick)
-        reset = Gtk.Button(label="Use Harbor's Sky")
-        reset.add_css_class("glossy")
-        reset.add_css_class("plain")
-        reset.connect("clicked", lambda *_: self._set_wallpaper(""))
-        row.append(reset)
+        self._match_desktop = Gtk.CheckButton(label="Also use it for the desktop and lock screen", active=True)
+        row.append(self._match_desktop)
         box.append(row)
 
         # Options
@@ -357,7 +546,10 @@ class SettingsWindow(Gtk.Window):
             box.append(none)
 
         # Heirloom's Software Update app, when it's installed.
-        updates = Gio.DesktopAppInfo.new("dev.heirloom.Updates.desktop")
+        try:
+            updates = Gio.DesktopAppInfo.new("dev.heirloom.Updates.desktop")
+        except TypeError:  # not installed
+            updates = None
         if updates:
             box.append(self._title("System"))
             upd = Gtk.Button(label="Software Update…")
@@ -426,9 +618,22 @@ class SettingsWindow(Gtk.Window):
         dialog.open(self, None, done)
 
     def _set_wallpaper(self, path):
+        """path: a file, or the name of one of Harbor's wallpapers."""
         self.home.config.wallpaper = path or ""
         self.home.config.save()
         self.home._apply_wallpaper()
+        self._mark_wallpaper()
+        if self._match_desktop.get_active():
+            full = path if path.startswith("/") else str(wallpaper_path(path or "sky"))
+            try:
+                set_system_background(full)
+            except GLib.Error:
+                pass
+
+    def _mark_wallpaper(self):
+        current = self.home.config.wallpaper or "sky"
+        for name, b in self._swatches.items():
+            (b.add_css_class if name == current else b.remove_css_class)("chosen")
 
 
 def main():

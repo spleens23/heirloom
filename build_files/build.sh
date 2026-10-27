@@ -31,6 +31,7 @@ mkdir -p "$LIB"
 cp -r "$CTX/apps/spectacle/spectacle" "$LIB/"
 cp -r "$CTX/apps/harbor/harbor" "$LIB/"
 cp -r "$CTX/apps/updates/heirloom_updates" "$LIB/"
+cp -r "$CTX/apps/weather/heirloom_weather" "$LIB/"
 
 # Spectacle's helpers (yt-dlp and the mpv bindings) live in their own Python
 # environment. The image is rebuilt daily, so yt-dlp stays current.
@@ -42,11 +43,13 @@ find "$LIB" -name '__pycache__' -prune -exec rm -rf {} +
 install -Dm755 "$CTX/system_files/usr/bin/spectacle" /usr/bin/spectacle
 install -Dm755 "$CTX/system_files/usr/bin/harbor" /usr/bin/harbor
 install -Dm755 "$CTX/system_files/usr/bin/heirloom-updates" /usr/bin/heirloom-updates
+install -Dm755 "$CTX/system_files/usr/bin/heirloom-weather" /usr/bin/heirloom-weather
 
 # folder : app id : command
 for app in spectacle:dev.spectacle.Spectacle:spectacle \
            harbor:dev.harbor.Harbor:harbor \
-           updates:dev.heirloom.Updates:heirloom-updates; do
+           updates:dev.heirloom.Updates:heirloom-updates \
+           weather:dev.heirloom.Weather:heirloom-weather; do
     IFS=: read -r dir id cmd <<< "$app"
     sed "s|@LAUNCHER@|/usr/bin/$cmd|" "$CTX/apps/$dir/data/$id.desktop" \
         > "/usr/share/applications/$id.desktop"
@@ -64,6 +67,19 @@ cp -r "$CTX/apps/harbor/shell-extension/harbor-tablet@harbor.dev" \
 cp -r "$CTX/system_files/etc/." /etc/
 [ -d "$CTX/system_files/usr/share" ] && cp -r "$CTX/system_files/usr/share/." /usr/share/
 install -Dm644 "$CTX/apps/harbor/harbor/wallpaper.svg" /usr/share/backgrounds/heirloom/sky.svg
+# Harbor's wallpapers also show in GNOME Settings → Appearance.
+mkdir -p /usr/share/gnome-background-properties
+{
+    echo '<?xml version="1.0" encoding="UTF-8"?>'
+    echo '<!DOCTYPE wallpapers SYSTEM "gnome-wp-list.dtd">'
+    echo '<wallpapers>'
+    for w in "$CTX"/apps/harbor/harbor/wallpapers/*.svg; do
+        n="$(basename "$w" .svg)"
+        install -Dm644 "$w" "/usr/share/backgrounds/heirloom/$n.svg"
+        printf '  <wallpaper deleted="false"><name>Heirloom %s</name><filename>/usr/share/backgrounds/heirloom/%s.svg</filename><options>zoom</options><shade_type>solid</shade_type></wallpaper>\n' "${n^}" "$n"
+    done
+    echo '</wallpapers>'
+} > /usr/share/gnome-background-properties/heirloom.xml
 dconf update
 
 # Name the system Heirloom (keeping Fedora's ID so updates and tools still work).
@@ -81,6 +97,17 @@ install -Dm755 "$CTX/system_files/usr/libexec/heirloom-first-boot" /usr/libexec/
 install -Dm644 "$CTX/system_files/usr/lib/systemd/system/heirloom-first-boot.service" \
     /usr/lib/systemd/system/heirloom-first-boot.service
 systemctl enable heirloom-first-boot.service
+
+# Start without flashing the boot menu (hold Esc while starting to see it).
+install -Dm755 "$CTX/system_files/usr/libexec/heirloom-tidy" /usr/libexec/heirloom-tidy
+install -Dm644 "$CTX/system_files/usr/lib/systemd/system/heirloom-tidy.service" \
+    /usr/lib/systemd/system/heirloom-tidy.service
+systemctl enable heirloom-tidy.service
+# New installs get it from the start, as part of the boot menu's own settings.
+if [ -d /usr/lib/bootupd/grub2-static/configs.d ]; then
+    install -Dm644 "$CTX/system_files/usr/share/heirloom/grub-quiet.cfg" \
+        /usr/lib/bootupd/grub2-static/configs.d/12_heirloom_quiet.cfg
+fi
 
 # ---- 5. updates --------------------------------------------------------------------
 install -Dm755 "$CTX/system_files/usr/bin/heirloom-update" /usr/bin/heirloom-update

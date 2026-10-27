@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Heirloom's Weather app.
+export PYTHONPATH="/usr/lib/heirloom${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m heirloom_weather "$@"
