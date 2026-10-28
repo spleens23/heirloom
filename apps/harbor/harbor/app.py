@@ -1,27 +1,38 @@
-"""Harbor's application, window, search, long-press menu and settings."""
+"""Tablet Settings: wallpaper, the lock screen and its passcode.
+
+(This used to be Harbor's home screen; in tablet mode the home screen is now the app
+drawer, built into the shell. The drawer keeps using ~/.config/harbor/config.json.)
+
+  harbor                    the settings window
+  harbor --setup-passcode   choose a passcode, full screen (the first time you log in)
+  harbor --setup-if-needed  the same, only if you don't have a passcode yet
+"""
 
 from __future__ import annotations
 
-import shutil
+import json
+import os
+import subprocess
 import sys
-from datetime import datetime
+import threading
 from pathlib import Path
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-gi.require_version("Graphene", "1.0")
-from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gtk, Pango  # noqa: E402
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
-from . import APP_ID, APP_NAME  # noqa: E402
+from . import APP_ID  # noqa: E402
 from . import apps as appsmod  # noqa: E402
-from .config import DEFAULT_DOCK, Config  # noqa: E402
-from .home import AppIcon, Dock, FolderIcon, Pages, StatusBar  # noqa: E402
+from .config import AUTOSTART_FILE, Config  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-MAX_DOCK = 6
 WALLPAPERS = [("sky", "Sky"), ("dusk", "Dusk"), ("sea", "Sea"), ("meadow", "Meadow"), ("night", "Night")]
+HELPER = os.environ.get("HEIRLOOM_LOCKSCREEN_HELPER", "/usr/libexec/heirloom-lockscreen")
+PASSCODE_DIR = Path(os.environ.get("HEIRLOOM_PASSCODE_DIR", "/var/lib/heirloom/passcode"))
+DATA_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "heirloom"
 
 
 def wallpaper_path(name: str) -> Path:
@@ -29,464 +40,379 @@ def wallpaper_path(name: str) -> Path:
     return p if p.exists() else HERE / "wallpaper.svg"
 
 
-def set_system_background(path: str):
-    """Use the same picture for GNOME's desktop (laptop mode) and lock screen."""
+def current_user() -> str:
+    return GLib.get_user_name()
+
+
+def passcode_length() -> int:
+    try:
+        n = int((PASSCODE_DIR / current_user()).read_text().strip())
+        return n if n in (4, 6) else 0
+    except (OSError, ValueError):
+        return 0
+
+
+def _settings(schema):
+    source = Gio.SettingsSchemaSource.get_default()
+    if source and source.lookup(schema, True):
+        return Gio.Settings.new(schema)
+    return None
+
+
+def set_desktop_background(path: str):
     uri = Gio.File.new_for_path(path).get_uri()
-    for schema, keys in (("org.gnome.desktop.background", ("picture-uri", "picture-uri-dark")),
-                         ("org.gnome.desktop.screensaver", ("picture-uri",))):
-        source = Gio.SettingsSchemaSource.get_default()
-        if not source or not source.lookup(schema, True):
-            continue
-        settings = Gio.Settings.new(schema)
-        for key in keys:
-            if settings.props.settings_schema.has_key(key):
-                settings.set_string(key, uri)
+    s = _settings("org.gnome.desktop.background")
+    if s:
+        s.set_string("picture-uri", uri)
+        s.set_string("picture-uri-dark", uri)
 
 
-class HarborApp(Adw.Application):
-    def __init__(self):
-        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
-        GLib.set_application_name(APP_NAME)
-        self.window = None
-
-    def do_startup(self):
-        Adw.Application.do_startup(self)
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
-        display = Gdk.Display.get_default()
-        css = Gtk.CssProvider()
-        css.load_from_path(str(HERE / "style.css"))
-        Gtk.StyleContext.add_provider_for_display(display, css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
-        Gtk.IconTheme.get_for_display(display).add_search_path(str(HERE / "icons"))
-
-    def do_activate(self):
-        # Launching Harbor again (e.g. from a keyboard shortcut) brings Home back.
-        if not self.window:
-            self.window = HomeWindow(self)
-        else:
-            self.window.go_home()
-        self.window.present()
+def render_png(src: str, dest: Path, width=1920, height=1200) -> Path:
+    """Any picture (SVG too) as a PNG filling width×height, for the lock screen."""
+    pix = GdkPixbuf.Pixbuf.new_from_file(src)
+    scale = max(width / pix.get_width(), height / pix.get_height())
+    w, h = max(1, round(pix.get_width() * scale)), max(1, round(pix.get_height() * scale))
+    if src.endswith(".svg"):
+        pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(src, w, h, False)
+    else:
+        pix = pix.scale_simple(w, h, GdkPixbuf.InterpType.BILINEAR)
+    x, y = max(0, (pix.get_width() - width) // 2), max(0, (pix.get_height() - height) // 2)
+    pix = pix.new_subpixbuf(x, y, min(width, pix.get_width() - x), min(height, pix.get_height() - y))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    pix.savev(str(dest), "png", [], [])
+    return dest
 
 
-class HomeWindow(Adw.ApplicationWindow):
-    def __init__(self, app: HarborApp):
-        super().__init__(application=app, title=APP_NAME, default_width=1280, default_height=800)
-        self.add_css_class("harbor")
-        # Start at the screen's size, so the layout is right even before
-        # the window goes full screen.
-        monitors = Gdk.Display.get_default().get_monitors()
-        if monitors.get_n_items():
-            geo = monitors.get_item(0).get_geometry()
-            self.set_default_size(geo.width, geo.height)
-        self.config = Config()
-        self._all_apps: list[Gio.DesktopAppInfo] = []
-        self._wall_css = Gtk.CssProvider()
-        Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(), self._wall_css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2)
+def run_helper(args, stdin_text=None):
+    """Run the root helper through pkexec. Returns (ok, message)."""
+    cmd = [HELPER, *args] if os.environ.get("HEIRLOOM_LOCKSCREEN_DIRECT") else ["pkexec", HELPER, *args]  # (direct: tests)
+    try:
+        r = subprocess.run(cmd, input=stdin_text, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, str(e)
+    if r.returncode == 0:
+        return True, ""
+    if r.returncode == 3 or "WRONG_PASSWORD" in r.stderr:
+        return False, "WRONG_PASSWORD"
+    if r.returncode in (126, 127):
+        return False, "Not allowed."
+    return False, (r.stderr.strip() or "Something went wrong.").splitlines()[-1]
 
-        self.toasts = Adw.ToastOverlay()
-        self.set_content(self.toasts)
-        self.overlay = Gtk.Overlay()
-        self.toasts.set_child(self.overlay)
 
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.status = StatusBar(self)
-        root.append(self.status)
-        self.pages = Pages(self)
-        self.pages.set_margin_top(12)
-        root.append(self.pages)
-        self.dock = Dock(self)
-        root.append(self.dock)
-        self.overlay.set_child(root)
+def change_keyring_password(old: str, new: str) -> bool:
+    """Keep the login keyring (saved Wi-Fi and website passwords) opening with the new passcode."""
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        res = bus.call_sync("org.freedesktop.secrets", "/org/freedesktop/secrets",
+                            "org.freedesktop.Secret.Service", "OpenSession",
+                            GLib.Variant("(sv)", ("plain", GLib.Variant("s", ""))),
+                            GLib.VariantType("(vo)"), Gio.DBusCallFlags.NONE, 5000, None)
+        session = res.unpack()[1]
 
-        self.search_sheet = self._build_search()
-        self.overlay.add_overlay(self.search_sheet)
-        self.folder_sheet = self._build_folder_sheet()
-        self.overlay.add_overlay(self.folder_sheet)
-        self._open_folder_id = None
+        def secret(text):
+            return (session, b"", text.encode("utf-8"), "text/plain")
 
-        self._apply_wallpaper()
-        self.reload_apps()
-        self._monitor = appsmod.watch(self.reload_apps)
-        self._tick()
-        GLib.timeout_add_seconds(1, self._tick)
+        bus.call_sync("org.freedesktop.secrets", "/org/freedesktop/secrets",
+                      "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface", "ChangeWithMasterPassword",
+                      GLib.Variant("(o(oayays)(oayays))",
+                                   ("/org/freedesktop/secrets/collection/login", secret(old), secret(new))),
+                      None, Gio.DBusCallFlags.NONE, 10000, None)
+        return True
+    except GLib.Error as e:
+        print(f"Tablet Settings: couldn't update the keyring: {e.message}", file=sys.stderr)
+        return False
+
+
+# ---- a keypad, the same as on the lock screen ---------------------------------------
+
+class Keypad(Gtk.Box):
+    LETTERS = ["", "ABC", "DEF", "GHI", "JKL", "MNO", "PQRS", "TUV", "WXYZ"]
+
+    def __init__(self, on_complete):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=18, halign=Gtk.Align.CENTER)
+        self.add_css_class("keypad")
+        self.length = 6
+        self.code = ""
+        self.on_complete = on_complete
+        self.dots = Gtk.Box(spacing=18, halign=Gtk.Align.CENTER)
+        self.append(self.dots)
+        grid = Gtk.Grid(row_spacing=16, column_spacing=28, halign=Gtk.Align.CENTER)
+        for n in range(1, 10):
+            grid.attach(self._key(str(n), self.LETTERS[n - 1]), (n - 1) % 3, (n - 1) // 3, 1, 1)
+        grid.attach(self._key("0", ""), 1, 3, 1, 1)
+        delete = Gtk.Button(label="Delete", valign=Gtk.Align.CENTER)
+        delete.add_css_class("keypad-text")
+        delete.connect("clicked", lambda *_: self.erase())
+        grid.attach(delete, 2, 3, 1, 1)
+        self.append(grid)
+        self.draw()
+
+    def _key(self, digit, letters):
+        b = Gtk.Button()
+        b.add_css_class("keypad-key")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+        d = Gtk.Label(label=digit)
+        d.add_css_class("keypad-digit")
+        box.append(d)
+        letters_label = Gtk.Label(label=letters)
+        letters_label.add_css_class("keypad-letters")
+        box.append(letters_label)
+        b.set_child(box)
+        b.connect("clicked", lambda *_: self.type(digit))
+        return b
+
+    def set_length(self, n):
+        self.length = n
+        self.clear()
+
+    def clear(self):
+        self.code = ""
+        self.draw()
+
+    def type(self, digit):
+        if len(self.code) >= self.length:
+            return
+        self.code += digit
+        self.draw()
+        if len(self.code) == self.length:
+            code = self.code
+            GLib.timeout_add(180, lambda: (self.on_complete(code), False)[1])
+
+    def erase(self):
+        self.code = self.code[:-1]
+        self.draw()
+
+    def draw(self):
+        child = self.dots.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            self.dots.remove(child)
+            child = nxt
+        for i in range(self.length):
+            dot = Gtk.Box()
+            dot.add_css_class("keypad-dot")
+            if i < len(self.code):
+                dot.add_css_class("on")
+            self.dots.append(dot)
+
+    def shake(self):
+        self.add_css_class("shake")
+        GLib.timeout_add(400, lambda: (self.remove_css_class("shake"), False)[1])
+
+    def key_pressed(self, keyval):
+        ch = chr(Gdk.keyval_to_unicode(keyval) or 0)
+        if ch.isdigit():
+            self.type(ch)
+            return True
+        if keyval == Gdk.KEY_BackSpace:
+            self.erase()
+            return True
+        return False
+
+
+# ---- choosing a passcode ------------------------------------------------------------
+
+class PasscodeWindow(Adw.ApplicationWindow):
+    """Current password (or passcode) → new passcode → the same again → done."""
+
+    def __init__(self, app, first_time=False):
+        super().__init__(application=app, title="Passcode", default_width=900, default_height=760)
+        self.add_css_class("passcode-window")
+        self.first_time = first_time
+        self.old = ""
+        self.new = ""
+        self.had_passcode = passcode_length()
+
+        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.SLIDE_LEFT, vexpand=True)
+        self.set_content(self.stack)
+
+        # 1. who you are
+        self.stack.add_named(self._old_page(), "old")
+        # 2 and 3. the new passcode, twice
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14, valign=Gtk.Align.CENTER)
+        self.title = Gtk.Label(label="Choose a Passcode")
+        self.title.add_css_class("passcode-title")
+        page.append(self.title)
+        self.hint = Gtk.Label(label="")
+        self.hint.add_css_class("passcode-hint")
+        page.append(self.hint)
+        length = Gtk.Box(halign=Gtk.Align.CENTER)
+        length.add_css_class("linked")
+        self.six = Gtk.ToggleButton(label="6 digits", active=True)
+        self.four = Gtk.ToggleButton(label="4 digits", group=self.six)
+        for b in (self.six, self.four):
+            b.add_css_class("length")
+            length.append(b)
+        self.six.connect("toggled", lambda b: self.keypad.set_length(6 if b.get_active() else 4))
+        self.length_row = length
+        page.append(length)
+        self.keypad = Keypad(self._entered)
+        page.append(self.keypad)
+        self.back_btn = Gtk.Button(label="Start Over", halign=Gtk.Align.CENTER)
+        self.back_btn.add_css_class("keypad-text")
+        self.back_btn.connect("clicked", lambda *_: self._restart())
+        page.append(self.back_btn)
+        self.stack.add_named(page, "new")
+        # 4. done
+        self.stack.add_named(self._done_page(), "done")
 
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self._key)
         self.add_controller(keys)
-        self.fullscreen()
+        if first_time:
+            self.fullscreen()
 
-    # ---- data -------------------------------------------------------------
-    def reload_apps(self):
-        self._all_apps = appsmod.installed_apps()
-        ids = {a.get_id() for a in self._all_apps}
-        if self.config.dock is None:  # first run: pick a sensible dock
-            dock = []
-            for d in DEFAULT_DOCK:
-                if d in ids and len(dock) < 4 and not (d == "firefox.desktop" and "org.mozilla.firefox.desktop" in dock):
-                    dock.append(d)
-            self.config.dock = dock
-            self.config.save()
-        self.pages.rebuild()
-        self.dock.rebuild()
+    def _old_page(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+        page.set_size_request(460, -1)
+        t = Gtk.Label(label="Set Up Your Passcode" if not self.had_passcode else "Change Passcode")
+        t.add_css_class("passcode-title")
+        page.append(t)
+        msg = ("Heirloom unlocks with a 4- or 6-digit passcode. First, type the password you chose when you installed Heirloom."
+               if not self.had_passcode else "Type your current passcode.")
+        m = Gtk.Label(label=msg, wrap=True, justify=Gtk.Justification.CENTER, max_width_chars=44)
+        m.add_css_class("passcode-hint")
+        page.append(m)
+        self.old_entry = Gtk.PasswordEntry(show_peek_icon=True, hexpand=True)
+        self.old_entry.add_css_class("passcode-entry")
+        self.old_entry.connect("activate", lambda *_: self._old_done())
+        page.append(self.old_entry)
+        self.old_error = Gtk.Label(label="")
+        self.old_error.add_css_class("passcode-error")
+        page.append(self.old_error)
+        row = Gtk.Box(halign=Gtk.Align.CENTER, spacing=12)
+        later = Gtk.Button(label="Not Now" if self.first_time else "Cancel")
+        later.add_css_class("glossy")
+        later.add_css_class("plain")
+        later.connect("clicked", lambda *_: self.close())
+        row.append(later)
+        nxt = Gtk.Button(label="Next")
+        nxt.add_css_class("glossy")
+        nxt.connect("clicked", lambda *_: self._old_done())
+        row.append(nxt)
+        page.append(row)
+        return page
 
-    def _by_id(self):
-        return {a.get_id(): a for a in self._all_apps}
+    def _done_page(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+        t = Gtk.Label(label="Your Passcode Is Set")
+        t.add_css_class("passcode-title")
+        page.append(t)
+        self.done_msg = Gtk.Label(label="", wrap=True, justify=Gtk.Justification.CENTER, max_width_chars=48)
+        self.done_msg.add_css_class("passcode-hint")
+        page.append(self.done_msg)
+        ok = Gtk.Button(label="Done", halign=Gtk.Align.CENTER)
+        ok.add_css_class("glossy")
+        ok.connect("clicked", lambda *_: self.close())
+        page.append(ok)
+        return page
 
-    def grid_apps(self):
-        """What's on the Home pages: apps (not in the dock or a folder) and folders."""
-        dock = set(self.config.dock or [])
-        in_folders = {a for f in self.config.folders.values() for a in f["apps"]}
-        hidden = set(self.config.hidden)
-        apps = [a for a in self._all_apps if a.get_id() not in dock and a.get_id() not in in_folders]
-        by_id = self._by_id()
-        folders = []
-        for fid, f in self.config.folders.items():
-            members = [by_id[i] for i in f["apps"] if i in by_id and i not in hidden]
-            if members:  # a folder whose apps were all uninstalled stays out of sight
-                folders.append(appsmod.Folder(fid, f["name"], members))
-        return appsmod.ordered(apps + folders, self.config.order, self.config.hidden)
-
-    def dock_apps(self):
-        by_id = self._by_id()
-        return [by_id[i] for i in (self.config.dock or []) if i in by_id]
-
-    def _tick(self):
-        now = datetime.now()
-        self.status.tick(now)
-        self.pages.clock.tick(now)
-        return True
-
-    def toast(self, text):
-        self.toasts.add_toast(Adw.Toast(title=text, timeout=2))
-
-    def go_home(self):
-        self.close_search()
-        self.close_folder()
-        self.pages.go_first()
-
-    def _key(self, _c, keyval, _code, state):
-        if self.folder_sheet.get_visible() and keyval == Gdk.KEY_Escape:
-            self.close_folder()
-            return True
-        if self.search_sheet.get_visible():
-            if keyval == Gdk.KEY_Escape:
-                self.close_search()
-                return True
-            return False
-        # Typing anywhere on Home starts a search.
-        ch = chr(Gdk.keyval_to_unicode(keyval) or 0)
-        if ch.isprintable() and ch.strip() and not state & Gdk.ModifierType.CONTROL_MASK:
-            self.open_search(ch)
-            return True
+    def _key(self, _c, keyval, _code, _state):
+        if self.stack.get_visible_child_name() == "new":
+            return self.keypad.key_pressed(keyval)
         return False
 
-    # ---- wallpaper --------------------------------------------------------
-    def _apply_wallpaper(self):
-        path = self.config.wallpaper
-        if path and not path.startswith("/"):
-            path = str(wallpaper_path(path))  # one of Harbor's own, by name
-        if not path or not Path(path).exists():
-            path = str(HERE / "wallpaper.svg")
-        uri = Gio.File.new_for_path(path).get_uri()
-        self._wall_css.load_from_string(f'window.harbor {{ background-image: url("{uri}"); }}')
-
-    # ---- long-press menus -----------------------------------------------------
-    def _popover(self, anchor, items, rect=None):
-        pop = Gtk.Popover(has_arrow=True, position=Gtk.PositionType.TOP)
-        pop.add_css_class("app-menu")
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        for label, fn in items:
-            b = Gtk.Button(label=label)
-            b.add_css_class("menu-item")
-            b.get_child().set_xalign(0)
-            b.connect("clicked", lambda *_, f=fn: (pop.popdown(), GLib.idle_add(lambda: (f(), False)[1])))
-            box.append(b)
-        pop.set_child(box)
-        pop.set_parent(anchor)
-        if rect is not None:
-            pop.set_pointing_to(rect)
-        pop.connect("closed", lambda p: GLib.idle_add(lambda: (p.unparent(), False)[1]))
-        pop.popup()
-        return pop
-
-    def show_menu(self, icon: AppIcon, in_dock: bool):
-        aid = icon.info.get_id()
-        items = []
-        if icon.folder:
-            items.append(("Take Out of Folder", lambda: self._folder_take_out(aid)))
-            items.append(("Add to Dock", lambda: (self._folder_take_out(aid, quiet=True), self._dock_add(aid))))
-            items.append(("Hide from Home", lambda: (self.close_folder(), self._hide(aid))))
-        elif in_dock:
-            items.append(("Remove from Dock", lambda: self._dock_remove(aid)))
-            items.append(("Move Left", lambda: self._dock_move(aid, -1)))
-            items.append(("Move Right", lambda: self._dock_move(aid, 1)))
-        else:
-            items.append(("Add to Folder…", lambda: self._folder_picker(icon)))
-            items.append(("Add to Dock", lambda: self._dock_add(aid)))
-            items.append(("Move Earlier", lambda: self._grid_move(aid, -1)))
-            items.append(("Move Later", lambda: self._grid_move(aid, 1)))
-            items.append(("Hide from Home", lambda: self._hide(aid)))
-        self._popover(icon, items)
-
-    def show_folder_menu(self, icon: FolderIcon):
-        fid = icon.folder.fid
-        self._popover(icon, [
-            ("Open", lambda: self.open_folder(fid)),
-            ("Rename…", lambda: self.open_folder(fid, rename=True)),
-            ("Move Earlier", lambda: self._grid_move(fid, -1)),
-            ("Move Later", lambda: self._grid_move(fid, 1)),
-            ("Remove Folder (keep the apps)", lambda: self._folder_remove(fid)),
-        ])
-
-    def show_home_menu(self, widget, x, y):
-        rect = Gdk.Rectangle()
-        rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
-        self._popover(widget, [
-            ("Change Wallpaper…", self.open_settings),
-            ("Search Apps", self.open_search),
-            ("Harbor Settings…", self.open_settings),
-        ], rect)
-
-    def _folder_picker(self, icon: AppIcon):
-        aid = icon.info.get_id()
-        items = [(f"Into “{f['name']}”", lambda fid=fid: self._folder_add(fid, aid))
-                 for fid, f in self.config.folders.items()]
-        items.append(("New Folder", lambda: self._folder_new(aid)))
-        self._popover(icon, items)
-
-    def _save_and_rebuild(self):
-        self.config.save()
-        self.pages.rebuild()
-        self.dock.rebuild()
-
-    def _dock_add(self, aid):
-        if len(self.config.dock) >= MAX_DOCK:
-            self.toast(f"The dock holds {MAX_DOCK} apps. Remove one first.")
+    def _old_done(self):
+        self.old = self.old_entry.get_text()
+        if not self.old:
+            self.old_error.set_label("Type your password first.")
             return
-        self.config.dock.append(aid)
-        self._save_and_rebuild()
+        self.old_error.set_label("")
+        self._restart()
+        self.stack.set_visible_child_name("new")
 
-    def _dock_remove(self, aid):
-        self.config.dock = [d for d in self.config.dock if d != aid]
-        self._save_and_rebuild()
+    def _restart(self):
+        self.new = ""
+        self.title.set_label("Choose a Passcode")
+        self.hint.set_label("Pick 4 or 6 digits you'll remember.")
+        self.length_row.set_visible(True)
+        self.keypad.set_length(6 if self.six.get_active() else 4)
 
-    def _dock_move(self, aid, step):
-        d = self.config.dock
-        i = d.index(aid)
-        j = max(0, min(len(d) - 1, i + step))
-        d[i], d[j] = d[j], d[i]
-        self._save_and_rebuild()
-
-    def _grid_move(self, aid, step):
-        # (aid may be an app or a folder)
-        order = [a.get_id() for a in self.grid_apps()]
-        i = order.index(aid)
-        j = max(0, min(len(order) - 1, i + step))
-        order[i], order[j] = order[j], order[i]
-        self.config.order = order
-        self._save_and_rebuild()
-
-    def _hide(self, aid):
-        self.config.hidden.append(aid)
-        self._save_and_rebuild()
-        self.toast("Hidden — bring it back in Harbor settings")
-
-    # ---- folders -----------------------------------------------------------------
-    def _remember_order(self):
-        """Pin the current Home order, so a new folder lands where its first app was."""
-        self.config.order = [a.get_id() for a in self.grid_apps()]
-
-    def _folder_new(self, aid):
-        self._remember_order()
-        fid = self.config.new_folder(appsmod.folder_name_for(self._by_id().get(aid)), aid)
-        self._save_and_rebuild()
-        self.open_folder(fid, rename=True)
-
-    def _folder_add(self, fid, aid):
-        self.config.put_in(fid, aid)
-        self._save_and_rebuild()
-        self.toast(f"Added to “{self.config.folders[fid]['name']}”")
-
-    def _folder_take_out(self, aid, quiet=False):
-        fid = self.config.folder_of(aid)
-        if not fid:
+    def _entered(self, code):
+        if not self.new:
+            self.new = code
+            self.title.set_label("Type It Again")
+            self.hint.set_label("To make sure.")
+            self.length_row.set_visible(False)
+            self.keypad.clear()
             return
-        self._remember_order()
-        pos = self.config.order.index(fid) + 1 if fid in self.config.order else len(self.config.order)
-        self.config.take_out(aid)
-        self.config.order.insert(min(pos, len(self.config.order)), aid)
-        self._save_and_rebuild()
-        if fid in self.config.folders and self._open_folder_id == fid:
-            self.open_folder(fid)
-        else:
-            self.close_folder()
-        if not quiet:
-            self.toast("Moved to Home")
-
-    def _folder_remove(self, fid):
-        self._remember_order()
-        self.config.remove_folder(fid)
-        self.close_folder()
-        self._save_and_rebuild()
-
-    def _build_folder_sheet(self):
-        sheet = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, visible=False)
-        sheet.add_css_class("folder-sheet")
-        self.folder_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
-                                   halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, vexpand=True)
-        self.folder_card.add_css_class("folder-card")
-        self.folder_name = Gtk.Entry(halign=Gtk.Align.CENTER, xalign=0.5, width_chars=18)
-        self.folder_name.add_css_class("folder-name")
-        self.folder_name.connect("changed", lambda e: self._rename_folder(e.get_text()))
-        self.folder_name.connect("activate", lambda *_: self.folder_grid.grab_focus())
-        self.folder_card.append(self.folder_name)
-        self.folder_grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                                       min_children_per_line=3, max_children_per_line=4,
-                                       halign=Gtk.Align.CENTER)
-        self.folder_card.append(self.folder_grid)
-        sheet.append(self.folder_card)
-        # Tapping outside the card closes the folder.
-        tap = Gtk.GestureClick()
-        tap.connect("released", self._folder_sheet_tap)
-        sheet.add_controller(tap)
-        return sheet
-
-    def _folder_sheet_tap(self, gesture, _n, x, y):
-        ok, bounds = self.folder_card.compute_bounds(self.folder_sheet)
-        if ok and not bounds.contains_point(Graphene.Point().init(x, y)):
-            self.close_folder()
-
-    def open_folder(self, fid, rename=False):
-        folder = self.config.folders.get(fid)
-        if not folder:
+        if code != self.new:
+            self.keypad.shake()
+            self._restart()
+            self.title.set_label("Those Didn't Match")
+            self.hint.set_label("Choose a passcode again.")
             return
-        self._open_folder_id = None  # don't save while filling in the name
-        self.folder_name.set_text(folder["name"])
-        self._open_folder_id = fid
-        self.folder_grid.remove_all()
-        by_id = self._by_id()
-        for aid in folder["apps"]:
-            if aid in by_id and aid not in self.config.hidden:
-                icon = AppIcon(self, by_id[aid], folder=fid)
-                icon.connect("clicked", lambda *_: self.close_folder())
-                self.folder_grid.append(icon)
-        self.folder_sheet.set_visible(True)
-        if rename:
-            self.folder_name.grab_focus()
-            self.folder_name.select_region(0, -1)
+        self.title.set_label("Saving…")
+        self.set_sensitive(False)
+        old, new = self.old, code
 
-    def close_folder(self):
-        if not self.folder_sheet.get_visible():
+        def work():
+            ok, msg = run_helper(["passcode"], json.dumps({"old": old, "new": new}))
+            keyring = change_keyring_password(old, new) if ok else False
+            GLib.idle_add(lambda: (self._saved(ok, msg, keyring), False)[1])
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _saved(self, ok, msg, keyring):
+        self.set_sensitive(True)
+        if not ok:
+            if msg == "WRONG_PASSWORD":
+                self.old_error.set_label("That isn't right. Try again.")
+                self.old_entry.set_text("")
+                self.stack.set_visible_child_name("old")
+                self.old_entry.grab_focus()
+            else:
+                self._restart()
+                self.title.set_label("Couldn't Save the Passcode")
+                self.hint.set_label(msg)
             return
-        self.folder_sheet.set_visible(False)
-        self._open_folder_id = None
-        self.pages.rebuild()
-
-    def _rename_folder(self, text):
-        fid = self._open_folder_id
-        if fid and fid in self.config.folders:
-            self.config.folders[fid]["name"] = text.strip() or "Folder"
-            self.config.save()
-
-    # ---- search -------------------------------------------------------------
-    def _build_search(self):
-        sheet = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14, visible=False)
-        sheet.add_css_class("search-sheet")
-        top = Gtk.Box(spacing=10, margin_top=24, margin_start=40, margin_end=40)
-        self.search_entry = Gtk.SearchEntry(hexpand=True, placeholder_text="Search apps")
-        self.search_entry.add_css_class("home-search")
-        self.search_entry.connect("search-changed", lambda *_: self._filter())
-        self.search_entry.connect("activate", lambda *_: self._open_first())
-        self.search_entry.connect("stop-search", lambda *_: self.close_search())
-        top.append(self.search_entry)
-        cancel = Gtk.Button(label="Cancel", valign=Gtk.Align.CENTER)
-        cancel.add_css_class("glossy")
-        cancel.add_css_class("plain")
-        cancel.connect("clicked", lambda *_: self.close_search())
-        top.append(cancel)
-        sheet.append(top)
-        self.search_hint = Gtk.Label(label="")
-        self.search_hint.add_css_class("hint-light")
-        sheet.append(self.search_hint)
-        self.results = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                                   max_children_per_line=10, valign=Gtk.Align.START,
-                                   margin_start=30, margin_end=30)
-        sw = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
-        sw.set_child(self.results)
-        sheet.append(sw)
-        # Tapping the empty dark area closes search.
-        tap = Gtk.GestureClick()
-        tap.connect("released", lambda g, n, x, y: self._sheet_tap(sw, y))
-        sheet.add_controller(tap)
-        return sheet
-
-    def _sheet_tap(self, sw, y):
-        if not self.results.get_first_child():
-            self.close_search()
-
-    def open_search(self, initial: str = ""):
-        self.search_sheet.set_visible(True)
-        self.search_entry.set_text(initial)
-        self.search_entry.grab_focus()
-        self.search_entry.set_position(-1)
-        self._filter()
-
-    def close_search(self):
-        self.search_sheet.set_visible(False)
-        self.search_entry.set_text("")
-
-    def _matches(self):
-        q = self.search_entry.get_text().strip().casefold()
-        if not q:
-            return []
-        hits = []
-        for a in self._all_apps:
-            name = a.get_display_name().casefold()
-            hay = " ".join(filter(None, [name, (a.get_description() or "").casefold(),
-                                         " ".join(a.get_keywords() or []).casefold()]))
-            if q in hay:
-                hits.append((0 if name.startswith(q) else 1 if q in name else 2, name, a))
-        return [a for *_, a in sorted(hits, key=lambda h: (h[0], h[1]))]
-
-    def _filter(self):
-        self.results.remove_all()
-        matches = self._matches()
-        q = self.search_entry.get_text().strip()
-        self.search_hint.set_label("" if not q else (f"No apps match “{q}”" if not matches else ""))
-        for a in matches[:40]:
-            icon = AppIcon(self, a)
-            icon.connect("clicked", lambda *_: self.close_search())
-            self.results.append(icon)
-
-    def _open_first(self):
-        matches = self._matches()
-        if matches:
-            appsmod.launch(matches[0])
-            self.close_search()
-
-    # ---- settings ---------------------------------------------------------------
-    def open_settings(self):
-        SettingsWindow(self).present()
+        extra = "" if keyring else (" Your saved passwords (Wi-Fi, websites) may ask for your old password once, "
+                                    "the next time you log in.")
+        self.done_msg.set_label("Use it to unlock Heirloom, log in, and approve updates and changes." + extra)
+        self.stack.set_visible_child_name("done")
 
 
-class SettingsWindow(Gtk.Window):
-    def __init__(self, home: HomeWindow):
-        super().__init__(transient_for=home, modal=True, title="Harbor Settings",
-                         default_width=460, default_height=560)
+# ---- the settings window -----------------------------------------------------------
+
+class SettingsWindow(Adw.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Tablet Settings", default_width=720, default_height=760)
         self.add_css_class("harbor-settings")
-        self.home = home
-        cfg = home.config
-        outer = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=10,
-                      margin_bottom=20, margin_start=18, margin_end=18)
-        outer.set_child(box)
-        self.set_child(outer)
+        self.config = Config()
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        bar = Gtk.CenterBox()
+        bar.add_css_class("navbar")
+        t = Gtk.Label(label="Tablet Settings")
+        t.add_css_class("navbar-title")
+        bar.set_center_widget(t)
+        root.append(bar)
+        outer = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=10, margin_bottom=24,
+                           margin_start=24, margin_end=24, halign=Gtk.Align.CENTER)
+        self.box.set_size_request(600, -1)
+        outer.set_child(self.box)
+        root.append(outer)
+        self.toasts = Adw.ToastOverlay(child=root)
+        self.set_content(self.toasts)
+        self.build()
 
-        # Wallpaper: Harbor's own, or any picture
-        box.append(self._title("Wallpaper"))
+    def toast(self, text):
+        self.toasts.add_toast(Adw.Toast(title=text, timeout=3))
+
+    def _title(self, text):
+        lbl = Gtk.Label(label=text, xalign=0)
+        lbl.add_css_class("settings-title")
+        return lbl
+
+    def _note(self, text):
+        lbl = Gtk.Label(label=text, xalign=0, wrap=True)
+        lbl.add_css_class("dim-label")
+        return lbl
+
+    def _gallery(self, current, on_pick):
         gallery = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
                               min_children_per_line=3, max_children_per_line=5, column_spacing=8, row_spacing=8)
-        self._swatches = {}
+        swatches = {}
         for name, label in WALLPAPERS:
             b = Gtk.Button(tooltip_text=label)
             b.add_css_class("wallpaper-swatch")
@@ -497,32 +423,56 @@ class SettingsWindow(Gtk.Window):
             inner.append(pic)
             inner.append(Gtk.Label(label=label))
             b.set_child(inner)
-            b.connect("clicked", lambda *_, n=name: self._set_wallpaper(n))
+            b.connect("clicked", lambda *_, n=name: on_pick(n))
             gallery.append(b)
-            self._swatches[name] = b
+            swatches[name] = b
+
+        def mark(cur):
+            for n, b in swatches.items():
+                (b.add_css_class if n == cur else b.remove_css_class)("chosen")
+        mark(current)
+        return gallery, mark
+
+    def build(self):
+        box = self.box
+
+        # Wallpaper (behind the open-apps view, and the laptop desktop)
+        box.append(self._title("Wallpaper"))
+        box.append(self._note("Behind your open apps, and on the desktop in laptop mode."))
+        gallery, self._mark_wall = self._gallery(self.config.wallpaper or "sky", self._set_wallpaper)
         box.append(gallery)
-        self._mark_wallpaper()
-        row = Gtk.Box(spacing=10, margin_top=6)
-        pick = Gtk.Button(label="Choose Picture…")
+        pick = Gtk.Button(label="Choose Picture…", halign=Gtk.Align.START)
         pick.add_css_class("glossy")
-        pick.connect("clicked", lambda *_: self._choose_wallpaper())
-        row.append(pick)
-        self._match_desktop = Gtk.CheckButton(label="Also use it for the desktop and lock screen", active=True)
-        row.append(self._match_desktop)
-        box.append(row)
+        pick.connect("clicked", lambda *_: self._choose_picture(self._set_wallpaper))
+        box.append(pick)
 
-        # Options
-        box.append(self._title("Home Screen"))
-        lst = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        lst.add_css_class("grouped")
-        lst.append(self._switch_row("Show the clock", cfg.show_clock, self._toggle_clock))
-        lst.append(self._switch_row("Open Harbor when I log in", Config.starts_at_login(), self._toggle_login))
-        box.append(lst)
+        # Lock screen
+        box.append(self._title("Lock Screen"))
+        box.append(self._note("The picture on the lock screen, and behind the passcode keypad when you log in."))
+        gallery, self._mark_lock = self._gallery(self._lock_choice(), self._set_lock_wallpaper)
+        box.append(gallery)
+        pick2 = Gtk.Button(label="Choose Picture…", halign=Gtk.Align.START)
+        pick2.add_css_class("glossy")
+        pick2.connect("clicked", lambda *_: self._choose_picture(self._set_lock_wallpaper))
+        box.append(pick2)
 
-        # Hidden apps
-        box.append(self._title("Hidden Apps"))
-        hidden = [a for a in home._all_apps if a.get_id() in cfg.hidden]
+        # Passcode
+        box.append(self._title("Passcode"))
+        n = passcode_length()
+        box.append(self._note(f"You unlock Heirloom with a {n}-digit passcode." if n else
+                              "You don't have a passcode yet: Heirloom still asks for your password."))
+        change = Gtk.Button(label="Change Passcode…" if n else "Set Up Passcode…", halign=Gtk.Align.START)
+        change.add_css_class("glossy")
+        change.connect("clicked", lambda *_: PasscodeWindow(self.get_application()).present())
+        box.append(change)
+
+        # The app drawer
+        box.append(self._title("App Drawer"))
+        box.append(self._note("Swipe up from the bottom edge for your apps. Tap and hold an app there to add it to "
+                              "Favorites or put it in a folder."))
+        hidden = [a for a in appsmod.installed_apps() if a.get_id() in self.config.hidden]
         if hidden:
+            box.append(self._note("Hidden apps:"))
             hl = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
             hl.add_css_class("grouped")
             for a in hidden:
@@ -531,76 +481,29 @@ class SettingsWindow(Gtk.Window):
                 if a.get_icon():
                     img.set_from_gicon(a.get_icon())
                 r.append(img)
-                lbl = Gtk.Label(label=a.get_display_name(), xalign=0, hexpand=True,
-                                ellipsize=Pango.EllipsizeMode.END)
-                r.append(lbl)
+                r.append(Gtk.Label(label=a.get_display_name(), xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END))
                 show = Gtk.Button(label="Show", valign=Gtk.Align.CENTER)
                 show.add_css_class("glossy")
                 show.connect("clicked", lambda b, aid=a.get_id(), rr=r: self._unhide(aid, rr))
                 r.append(show)
                 hl.append(r)
             box.append(hl)
-        else:
-            none = Gtk.Label(label="No hidden apps. Long-press an app on Home to hide it.", xalign=0, wrap=True)
-            none.add_css_class("dim-label")
-            box.append(none)
 
-        # Heirloom's Software Update app, when it's installed.
+        # System
         try:
             updates = Gio.DesktopAppInfo.new("dev.heirloom.Updates.desktop")
-        except TypeError:  # not installed
+        except TypeError:
             updates = None
         if updates:
             box.append(self._title("System"))
-            upd = Gtk.Button(label="Software Update…")
+            upd = Gtk.Button(label="Software Update…", halign=Gtk.Align.START)
             upd.add_css_class("glossy")
-            upd.connect("clicked", lambda *_: (updates.launch([], None), self.close()))
+            upd.connect("clicked", lambda *_: updates.launch([], None))
             box.append(upd)
 
-        # Leave
-        box.append(self._title("Harbor"))
-        quit_btn = Gtk.Button(label="Quit Harbor")
-        quit_btn.add_css_class("glossy")
-        quit_btn.add_css_class("plain")
-        quit_btn.connect("clicked", lambda *_: home.get_application().quit())
-        box.append(quit_btn)
-        tip = Gtk.Label(wrap=True, xalign=0, label=(
-            "Tip: tapping and holding an app gives you options like Add to Dock. "
-            "Type anywhere on Home to search."))
-        tip.add_css_class("dim-label")
-        tip.set_margin_top(8)
-        box.append(tip)
-
-    def _title(self, text):
-        lbl = Gtk.Label(label=text, xalign=0)
-        lbl.add_css_class("settings-title")
-        return lbl
-
-    def _switch_row(self, text, active, fn):
-        r = Gtk.Box(spacing=10)
-        lbl = Gtk.Label(label=text, xalign=0, hexpand=True)
-        r.append(lbl)
-        sw = Gtk.Switch(active=active, valign=Gtk.Align.CENTER)
-        sw.connect("notify::active", lambda s, _p: fn(s.get_active()))
-        r.append(sw)
-        return r
-
-    def _toggle_clock(self, on):
-        self.home.config.show_clock = on
-        self.home._save_and_rebuild()
-
-    def _toggle_login(self, on):
-        cmd = shutil.which("harbor") or f"{sys.executable} -m harbor"
-        Config.set_start_at_login(on, cmd)
-
-    def _unhide(self, aid, row_child):
-        self.home.config.hidden = [h for h in self.home.config.hidden if h != aid]
-        self.home._save_and_rebuild()
-        row = row_child.get_parent()
-        row.get_parent().remove(row)
-
-    def _choose_wallpaper(self):
-        dialog = Gtk.FileDialog(title="Choose a Wallpaper")
+    # ---- pictures ----
+    def _choose_picture(self, then):
+        dialog = Gtk.FileDialog(title="Choose a Picture")
         f = Gtk.FileFilter()
         f.set_name("Pictures")
         f.add_mime_type("image/*")
@@ -613,28 +516,88 @@ class SettingsWindow(Gtk.Window):
                 file = dlg.open_finish(res)
             except GLib.Error:
                 return
-            self._set_wallpaper(file.get_path())
+            then(file.get_path())
 
         dialog.open(self, None, done)
 
-    def _set_wallpaper(self, path):
-        """path: a file, or the name of one of Harbor's wallpapers."""
-        self.home.config.wallpaper = path or ""
-        self.home.config.save()
-        self.home._apply_wallpaper()
-        self._mark_wallpaper()
-        if self._match_desktop.get_active():
-            full = path if path.startswith("/") else str(wallpaper_path(path or "sky"))
-            try:
-                set_system_background(full)
-            except GLib.Error:
-                pass
+    def _set_wallpaper(self, name_or_path):
+        self.config.load()
+        self.config.wallpaper = name_or_path
+        self.config.save()
+        path = name_or_path if name_or_path.startswith("/") else str(wallpaper_path(name_or_path))
+        set_desktop_background(path)
+        self._mark_wall(name_or_path)
 
-    def _mark_wallpaper(self):
-        current = self.home.config.wallpaper or "sky"
-        for name, b in self._swatches.items():
-            (b.add_css_class if name == current else b.remove_css_class)("chosen")
+    def _lock_choice(self):
+        try:
+            return (DATA_DIR / "lock-wallpaper.choice").read_text().strip() or "sky"
+        except OSError:
+            return "sky"
+
+    def _set_lock_wallpaper(self, name_or_path):
+        path = name_or_path if name_or_path.startswith("/") else str(wallpaper_path(name_or_path))
+        try:
+            png = render_png(path, DATA_DIR / "lock-wallpaper.png")
+        except GLib.Error as e:
+            self.toast(f"Couldn't use that picture: {e.message}")
+            return
+        s = _settings("org.gnome.desktop.screensaver")
+        if s:
+            s.set_string("picture-uri", Gio.File.new_for_path(str(png)).get_uri())
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        (DATA_DIR / "lock-wallpaper.choice").write_text(name_or_path)
+        self._mark_lock(name_or_path)
+
+        def work():
+            ok, _msg = run_helper(["wallpaper", str(png)])
+            GLib.idle_add(lambda: (self.toast("Lock screen picture set." if ok else
+                                              "Set for the lock screen (the login screen couldn't be changed)."), False)[1])
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _unhide(self, aid, row_child):
+        self.config.load()
+        self.config.hidden = [h for h in self.config.hidden if h != aid]
+        self.config.save()
+        row = row_child.get_parent()
+        row.get_parent().remove(row)
+
+
+class SettingsApp(Adw.Application):
+    def __init__(self, mode):
+        super().__init__(application_id=APP_ID if mode == "settings" else f"{APP_ID}.Setup",
+                         flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        self.mode = mode
+        GLib.set_application_name("Tablet Settings")
+
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+        css = Gtk.CssProvider()
+        css.load_from_path(str(HERE / "style.css"))
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css,
+                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
+
+    def do_activate(self):
+        win = self.props.active_window
+        if not win:
+            win = PasscodeWindow(self, first_time=True) if self.mode == "setup" else SettingsWindow(self)
+        win.present()
 
 
 def main():
-    return HarborApp().run(sys.argv)
+    args = sys.argv[1:]
+    # Harbor could start itself at login; it's not a home screen any more, so stop that.
+    if os.environ.get("DESKTOP_AUTOSTART_ID") and AUTOSTART_FILE.exists() and not args:
+        try:
+            AUTOSTART_FILE.unlink()
+        except OSError:
+            pass
+        return 0
+    if "--setup-if-needed" in args:
+        if passcode_length():
+            return 0
+        return SettingsApp("setup").run([sys.argv[0]])
+    if "--setup-passcode" in args:
+        return SettingsApp("setup").run([sys.argv[0]])
+    return SettingsApp("settings").run([sys.argv[0]])

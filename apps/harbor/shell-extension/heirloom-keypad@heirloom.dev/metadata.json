@@ -1,0 +1,9 @@
+{
+  "uuid": "heirloom-keypad@heirloom.dev",
+  "name": "Heirloom Passcode Keypad",
+  "description": "A 4- or 6-digit passcode keypad on Heirloom's login and lock screens, an iPad-style lock screen (a sharp clock, blurred behind the keypad), the lock-screen wallpaper at login, and straight to the passcode when only one person uses the computer.",
+  "shell-version": ["46", "47", "48", "49", "50", "51"],
+  "session-modes": ["user", "unlock-dialog", "gdm"],
+  "version": 1,
+  "url": ""
+}

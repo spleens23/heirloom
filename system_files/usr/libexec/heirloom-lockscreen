@@ -1,0 +1,136 @@
+#!/usr/bin/python3 -I
+"""Heirloom's lock-screen helper. Runs as root through pkexec, for the person who
+started it (PKEXEC_UID). Two jobs:
+
+  heirloom-lockscreen passcode    stdin: {"old": "<current password or passcode>", "new": "<4 or 6 digits>"}
+      Checks the current password itself, then makes the digits the account's
+      password (and the passcode), records its length for the keypad in
+      /var/lib/heirloom/passcode/<user>, and clears any wrong-try lockout.
+
+  heirloom-lockscreen wallpaper <picture.png>
+      Uses the picture behind the login screen (/var/lib/heirloom/lock-wallpaper.png).
+"""
+
+import ctypes
+import json
+import os
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+STATE = "/var/lib/heirloom"
+PASSCODES = os.path.join(STATE, "passcode")
+WALLPAPER = os.path.join(STATE, "lock-wallpaper.png")
+
+
+def fail(msg, code=1):
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def caller():
+    try:
+        uid = int(os.environ["PKEXEC_UID"])
+    except (KeyError, ValueError):
+        fail("Run this through pkexec.", 2)
+    if uid == 0:
+        fail("Not for the root account.", 2)
+    return pwd.getpwuid(uid).pw_name
+
+
+_libcrypt = None
+
+
+def libcrypt():
+    global _libcrypt
+    if _libcrypt is None:
+        for name in ("libcrypt.so.2", "libcrypt.so.1", "libcrypt.so"):
+            try:
+                _libcrypt = ctypes.CDLL(name)
+                break
+            except OSError:
+                continue
+        if _libcrypt is None:
+            fail("libcrypt is missing.")
+        _libcrypt.crypt.restype = ctypes.c_char_p
+        _libcrypt.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+        _libcrypt.crypt_gensalt.restype = ctypes.c_char_p
+        _libcrypt.crypt_gensalt.argtypes = [ctypes.c_char_p, ctypes.c_ulong, ctypes.c_char_p, ctypes.c_int]
+    return _libcrypt
+
+
+def shadow_hash(user):
+    with open("/etc/shadow") as f:
+        for line in f:
+            parts = line.rstrip("\n").split(":")
+            if parts[0] == user:
+                return parts[1]
+    return ""
+
+
+def password_ok(user, password):
+    h = shadow_hash(user)
+    if not h or h[0] in "!*":
+        return False
+    out = libcrypt().crypt(password.encode(), h.encode())
+    return out is not None and out.decode() == h
+
+
+def set_passcode(user, old, new):
+    if not re.fullmatch(r"\d{4}|\d{6}", new or ""):
+        fail("The passcode must be 4 or 6 digits.")
+    if not password_ok(user, old or ""):
+        time.sleep(2)  # slow down guessing
+        fail("WRONG_PASSWORD", 3)
+    salt = libcrypt().crypt_gensalt(None, 0, None, 0)
+    if not salt:
+        fail("Couldn't make a new password.")
+    hashed = libcrypt().crypt(new.encode(), salt)
+    if not hashed or hashed.startswith(b"*"):
+        fail("Couldn't make a new password.")
+    subprocess.run(["usermod", "-p", hashed.decode(), user], check=True)
+    os.makedirs(PASSCODES, mode=0o755, exist_ok=True)
+    os.chmod(STATE, 0o755)
+    os.chmod(PASSCODES, 0o755)
+    fd, tmp = tempfile.mkstemp(dir=PASSCODES)
+    with os.fdopen(fd, "w") as f:
+        f.write(f"{len(new)}\n")
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, os.path.join(PASSCODES, user))
+    subprocess.run(["faillock", "--user", user, "--reset"], check=False,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def set_wallpaper(path):
+    with open(path, "rb") as f:
+        head = f.read(8)
+        f.seek(0, 2)
+        size = f.tell()
+    if head != b"\x89PNG\r\n\x1a\n" or size > 40 * 1024 * 1024:
+        fail("Give a PNG picture (up to 40 MB).")
+    os.makedirs(STATE, mode=0o755, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=STATE, suffix=".png")
+    os.close(fd)
+    shutil.copyfile(path, tmp)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, WALLPAPER)
+
+
+def main():
+    user = caller()
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "passcode":
+        data = json.loads(sys.stdin.read() or "{}")
+        set_passcode(user, data.get("old", ""), data.get("new", ""))
+    elif cmd == "wallpaper" and len(sys.argv) == 3:
+        set_wallpaper(sys.argv[2])
+    else:
+        fail(__doc__, 2)
+
+
+if __name__ == "__main__":
+    main()

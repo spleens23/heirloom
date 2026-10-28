@@ -1,0 +1,8 @@
+# Heirloom's login screen: the passcode keypad and the lock-screen picture.
+[org/gnome/shell]
+enabled-extensions=['heirloom-keypad@heirloom.dev']
+
+[org/gnome/desktop/interface]
+clock-format='12h'
+clock-show-weekday=true
+show-battery-percentage=true

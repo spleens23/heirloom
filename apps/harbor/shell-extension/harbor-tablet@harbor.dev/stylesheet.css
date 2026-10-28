@@ -1,12 +1,208 @@
-/* The little home bar along the bottom edge in tablet mode. */
+/* Heirloom Tablet Mode — light-blue gloss to match Heirloom's apps.
+ * Everything here applies only in tablet mode (.heirloom-tablet is set on the
+ * shell while it's on), except the home bar. */
+
+/* ---- the home bar along the bottom ---- */
 .harbor-home-bar {
   width: 134px;
   height: 5px;
   border-radius: 3px;
-  background-color: rgba(255, 255, 255, 0.75);
-  box-shadow: 0 0 3px rgba(10, 40, 70, 0.6);
+  background-color: rgba(29, 66, 104, 0.55);
+  box-shadow: 0 0 2px rgba(255, 255, 255, 0.85);
 }
-.harbor-home-bar:active {
-  width: 160px;
-  background-color: rgba(255, 255, 255, 0.95);
+.harbor-home-bar:active { width: 160px; background-color: rgba(29, 66, 104, 0.85); }
+
+/* ---- the status bar ---- */
+.heirloom-tablet #panel {
+  height: 30px;
+  font-size: 10.5pt;
+  font-weight: 800;
+  background-color: rgba(240, 246, 251, 0.94);
+  background-gradient-direction: vertical;
+  background-gradient-start: rgba(255, 255, 255, 0.96);
+  background-gradient-end: rgba(234, 242, 249, 0.92);
+  border-bottom: 1px solid #b7c6d4;
+  box-shadow: 0 1px 3px rgba(20, 60, 100, 0.18);
+}
+.heirloom-tablet #panel .panel-button,
+.heirloom-tablet #panel .panel-button .clock,
+.heirloom-tablet #panel .panel-button StLabel {
+  color: #1d4268;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.heirloom-tablet #panel .panel-button { -natural-hpadding: 10px; -minimum-hpadding: 6px; }
+.heirloom-tablet #panel .panel-button:hover,
+.heirloom-tablet #panel .panel-button:active,
+.heirloom-tablet #panel .panel-button:checked,
+.heirloom-tablet #panel .panel-button:focus {
+  background-color: rgba(95, 166, 222, 0.22);
+  box-shadow: none;
+}
+.heirloom-tablet #panel .system-status-icon { color: #1d4268; icon-size: 15px; }
+
+/* ---- the controls (Quick Settings) and the calendar, as glass panels ---- */
+.heirloom-tablet .quick-settings,
+.heirloom-tablet .datemenu-popover,
+.heirloom-tablet .panel-menu.popup-menu > .popup-menu-content {
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  background-color: rgba(238, 244, 250, 0.97);
+  box-shadow: 0 18px 50px rgba(5, 20, 40, 0.5);
+  color: #2c3540;
+}
+.heirloom-tablet .quick-settings StLabel,
+.heirloom-tablet .datemenu-popover StLabel { color: #2c3540; }
+.heirloom-tablet .quick-toggle {
+  border-radius: 14px;
+  border: 1px solid #a7b3bf;
+  background-color: #e6ecf1;
+  background-gradient-direction: vertical;
+  background-gradient-start: #fdfeff;
+  background-gradient-end: #d6dde4;
+  color: #2c3540;
+}
+.heirloom-tablet .quick-toggle:checked {
+  border-color: #3a78ad;
+  background-gradient-start: #a9d3f4;
+  background-gradient-end: #4f93cc;
+  color: #ffffff;
+}
+.heirloom-tablet .quick-toggle:checked StLabel,
+.heirloom-tablet .quick-toggle:checked StIcon { color: #ffffff; }
+.heirloom-tablet .quick-settings .slider { color: #4f93cc; -barlevel-background-color: rgba(29, 66, 104, 0.15); -barlevel-active-background-color: #4f93cc; }
+.heirloom-tablet .icon-button,
+.heirloom-tablet .quick-settings-system-item .icon-button {
+  background-color: #e6ecf1;
+  border: 1px solid #b7c2cc;
+  color: #2c3540;
+}
+
+/* ---- the app drawer ---- */
+.hd-veil { background-color: rgba(14, 36, 60, 0.5); }
+.hd-sheet {
+  border-radius: 26px 26px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-bottom-width: 0;
+  background-color: rgba(233, 240, 246, 0.96);
+  background-gradient-direction: vertical;
+  background-gradient-start: rgba(250, 252, 254, 0.97);
+  background-gradient-end: rgba(225, 233, 241, 0.96);
+  box-shadow: 0 -10px 40px rgba(10, 30, 60, 0.45);
+  padding: 4px 44px 0 44px;
+  spacing: 14px;
+  font-family: Inter, Cantarell, sans-serif;
+}
+.hd-grab-area { padding: 8px 0 4px 0; }
+.hd-grabber { width: 52px; height: 6px; border-radius: 3px; background-color: #a9b6c3; }
+.hd-search {
+  width: 520px;
+  min-height: 40px;
+  border-radius: 21px;
+  border: 1px solid #a8b4bf;
+  background-color: #ffffff;
+  color: #2c3540;
+  caret-color: #2c3540;
+  padding: 0 16px;
+  font-size: 12pt;
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.12);
+}
+.hd-search:focus { border-color: #5fa6de; }
+.hd-search StLabel.hint-text { color: #7d8996; }
+.hd-section { font-size: 9.5pt; font-weight: 800; color: #4f5d6b; letter-spacing: 0.5px; text-shadow: 0 1px 0 #ffffff; }
+.hd-favs {
+  padding: 12px 18px;
+  spacing: 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 2px 8px rgba(20, 60, 100, 0.15);
+}
+.hd-grid { spacing: 18px; padding: 4px 4px 24px 4px; }
+.hd-row { spacing: 8px; }
+.hd-app { width: 96px; spacing: 6px; padding: 4px 0; border-radius: 14px; }
+.hd-app:active { background-color: rgba(95, 166, 222, 0.18); }
+.hd-tile {
+  width: 64px;
+  height: 64px;
+  border-radius: 15px;
+  border: 1px solid rgba(20, 50, 80, 0.18);
+  background-color: #f4f7fa;
+  background-gradient-direction: vertical;
+  background-gradient-start: #ffffff;
+  background-gradient-end: #e3e9ef;
+  box-shadow: 0 3px 6px rgba(10, 40, 70, 0.25);
+}
+.hd-folder-tile {
+  background-color: rgba(220, 233, 246, 0.8);
+  background-gradient-start: rgba(255, 255, 255, 0.9);
+  background-gradient-end: rgba(205, 222, 240, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+}
+.hd-app-label { font-size: 9pt; font-weight: 700; color: #1d2a36; max-width: 92px; }
+.hd-empty { color: #5c6b7a; font-size: 10.5pt; font-weight: 600; padding: 12px; }
+.hd-menu {
+  padding: 6px;
+  spacing: 2px;
+  border-radius: 12px;
+  border: 1px solid #9aa6b1;
+  background-color: #f2f5f8;
+  background-gradient-direction: vertical;
+  background-gradient-start: #fdfdfe;
+  background-gradient-end: #e7edf2;
+  box-shadow: 0 6px 16px rgba(10, 30, 50, 0.35);
+}
+.hd-menu-item { min-height: 38px; padding: 0 14px; border-radius: 8px; color: #2c3540; font-weight: 700; text-align: left; }
+.hd-menu-item:hover, .hd-menu-item:active, .hd-menu-item:focus {
+  background-gradient-direction: vertical;
+  background-gradient-start: #8cc4ef;
+  background-gradient-end: #4f93cc;
+  color: #ffffff;
+}
+.hd-folder-veil { background-color: rgba(18, 48, 80, 0.4); }
+.hd-folder-card {
+  padding: 16px 22px 20px 22px;
+  spacing: 12px;
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  background-color: rgba(240, 245, 250, 0.96);
+  box-shadow: 0 14px 40px rgba(10, 30, 60, 0.45);
+}
+.hd-folder-name {
+  width: 300px;
+  border: none;
+  background-color: transparent;
+  box-shadow: none;
+  font-size: 16pt;
+  font-weight: 800;
+  color: #1d4268;
+  text-align: center;
+}
+.hd-folder-name:focus { background-color: rgba(255, 255, 255, 0.7); border-radius: 10px; }
+
+/* ---- open apps ---- */
+.hs-backdrop { background-color: #4f86b8; background-size: cover; background-position: center; }
+.hs-dim { background-color: rgba(10, 30, 55, 0.4); }
+.hs-row { spacing: 44px; padding: 140px 60px 20px 60px; }
+.hs-card { spacing: 10px; }
+.hs-title { spacing: 8px; }
+.hs-name { color: #ffffff; font-weight: 800; font-size: 10.5pt; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.hs-close {
+  width: 26px; height: 26px; border-radius: 13px;
+  color: #ffffff; font-size: 13pt; font-weight: 800;
+  background-color: rgba(10, 30, 55, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+.hs-close:hover { background-color: rgba(200, 60, 50, 0.85); }
+.hs-shot {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background-color: #e4eaf0;
+  box-shadow: 0 14px 34px rgba(5, 20, 40, 0.55);
+}
+.hs-hint {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 10.5pt;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }

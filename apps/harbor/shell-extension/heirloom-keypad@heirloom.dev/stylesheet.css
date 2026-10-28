@@ -1,0 +1,34 @@
+/* Heirloom's passcode keypad and lock screen. */
+
+.hk-keypad { spacing: 18px; padding-top: 8px; }
+.hk-title { color: #ffffff; font-size: 16pt; font-weight: 700; text-shadow: 0 1px 3px rgba(10, 40, 70, 0.5); }
+.hk-dots { spacing: 18px; padding: 4px 0 10px 0; }
+.hk-dot {
+  width: 16px; height: 16px; border-radius: 8px;
+  border: 2px solid #ffffff;
+  background-color: transparent;
+}
+.hk-dot-on { background-color: #ffffff; }
+.hk-key {
+  width: 86px; height: 86px; border-radius: 43px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background-color: rgba(255, 255, 255, 0.2);
+  background-gradient-direction: vertical;
+  background-gradient-start: rgba(255, 255, 255, 0.4);
+  background-gradient-end: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 12px rgba(5, 20, 40, 0.3);
+  color: #ffffff;
+}
+.hk-key:hover { background-gradient-start: rgba(255, 255, 255, 0.5); }
+.hk-key:active { background-color: rgba(255, 255, 255, 0.55); background-gradient-start: rgba(255, 255, 255, 0.7); background-gradient-end: rgba(255, 255, 255, 0.4); }
+.hk-digit { font-size: 25pt; font-weight: 400; color: #ffffff; }
+.hk-letters { font-size: 7pt; font-weight: 800; letter-spacing: 1px; color: #ffffff; min-height: 10px; }
+.hk-bottom { padding-top: 12px; width: 330px; }
+.hk-text-button { color: #ffffff; font-size: 12pt; font-weight: 700; padding: 8px 6px; text-shadow: 0 1px 3px rgba(10, 40, 70, 0.6); }
+.hk-text-button:hover, .hk-text-button:focus { color: #d9eefc; }
+.hk-small { font-size: 10pt; font-weight: 600; color: rgba(255, 255, 255, 0.75); }
+
+/* iPad-style clock on the lock screen */
+.unlock-dialog-clock-time { font-size: 80pt; font-weight: 300; }
+.unlock-dialog-clock-date { font-size: 18pt; font-weight: 700; }
+.login-dialog-message { color: #ffffff; font-weight: 700; text-shadow: 0 1px 3px rgba(10, 40, 70, 0.6); }

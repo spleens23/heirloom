@@ -1,25 +1,27 @@
-// Harbor Tablet Mode — a GNOME Shell extension.
+// Heirloom Tablet Mode — a GNOME Shell extension.
 //
-// Tablet mode (screen folded back, or forced from Quick Settings):
-//   * Harbor comes to the front as the home screen, and sits on every desktop
-//     (so the first desktop is always Harbor, and any new one starts on it)
-//   * apps open full screen: maximized, with GNOME's top bar tucked away
-//     (swipe down from the top edge to bring the top bar back for a moment)
-//   * a swipe up from the bottom edge closes the app you're in (home bar)
-//   * the Super key goes Home instead of opening the Activities overview
-//   * three fingers up shows your desktops; up again makes a new desktop
+// Tablet mode (screen folded back, or forced from Quick Settings) is a locked-down,
+// iPad-like interface:
+//   * an app is always in front, full screen (Screenroom after starting up, or
+//     when the last app closes)
+//   * a slim status bar across the top: the time on the left, Wi-Fi and battery on
+//     the right; pull down on the right for the controls, on the left for
+//     notifications and the calendar
+//   * a quick swipe up from the bottom edge opens the app drawer (search,
+//     favorites, every app and folder); the Super key does too
+//   * swipe up and pause for your open apps: tap one to switch, flick it up to close
+//   * no overview, desktops or window controls
 //
-// Laptop mode: plain GNOME, and Harbor tucks itself away.
+// Laptop mode is plain GNOME.
 //
-// The hinge is read through GNOME's "touch mode", the same signal GNOME uses
-// to turn on the on-screen keyboard and screen rotation.
+// The hinge is read through GNOME's "touch mode", the same signal GNOME uses to
+// turn on the on-screen keyboard and screen rotation.
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
-import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -27,15 +29,16 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {QuickMenuToggle, SystemIndicator} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const HARBOR_APP_ID = 'dev.harbor.Harbor.desktop';
-const HARBOR_WM_CLASS = 'dev.harbor.Harbor';
+import {Drawer} from './drawer.js';
+import {Switcher} from './switcher.js';
+import {DEFAULT_FAVORITES, loadConfig, lookupApp} from './util.js';
+
 const MODES = ['auto', 'tablet', 'laptop'];
-const SWIPE_DISTANCE = 70; // pixels up from the edge that count as "close the app"
-const EDGE_HEIGHT = 14;    // height of the touch strip along the bottom
-const TOP_EDGE_HEIGHT = 6; // the strip along the top that pulls down the top bar
-const PULL_DISTANCE = 40;
-const PANEL_SHOW_SECONDS = 5;
-const APP_GRID = 2;        // the overview's third stage (OverviewControls.ControlsState.APP_GRID)
+const FRONT_APP = 'dev.screenroom.Screenroom.desktop';  // the app in front after starting up
+const EDGE_HEIGHT = 14;      // the touch strip along the bottom
+const PAUSE_MS = 280;        // holding still this long mid-swipe opens the open-apps view
+const PAUSE_MIN_PX = 110;    // ...once the finger is at least this far up
+const PULL_PX = 24;          // a pull down on the status bar this far opens its menu
 
 // The mode you pick is remembered in ~/.config/harbor/tablet-mode
 function modeFile() {
@@ -64,7 +67,10 @@ function writeMode(mode) {
 // Maximize across GNOME versions (the call changed shape in GNOME 49).
 function maximize(win) {
     try {
-        win.maximize(Meta.MaximizeFlags.BOTH);
+        if (Meta.MaximizeFlags)
+            win.maximize(Meta.MaximizeFlags.BOTH);
+        else
+            win.maximize();
     } catch (_e) {
         try {
             win.maximize();
@@ -73,32 +79,18 @@ function maximize(win) {
 }
 
 
-// ---- touch strips along the screen edges ---------------------------------
-// The bottom one carries the little home bar; swiping up from it closes the app.
-// The top one is invisible; pulling down from it shows GNOME's top bar.
+// ---- the bottom edge: swipe up for the drawer, swipe up and pause for open apps --
 
-const EdgeSwipe = GObject.registerClass(
-class EdgeSwipe extends St.Widget {
-    _init(where, onSwipe) {
-        super._init({
-            name: where === 'bottom' ? 'harborHomeEdge' : 'harborTopEdge',
-            reactive: true,
-            layout_manager: new Clutter.BinLayout(),
-        });
-        this._where = where;
-        this._onSwipe = onSwipe;
-        this._startY = null;
-
-        if (where === 'bottom') {
-            this._bar = new St.Widget({
-                style_class: 'harbor-home-bar',
-                x_align: Clutter.ActorAlign.CENTER,
-                y_align: Clutter.ActorAlign.CENTER,
-            });
-            this.add_child(this._bar);
-        }
-
-        this.connect('touch-event', (_a, event) => this._touch(event));
+const HomeEdge = GObject.registerClass(
+class HomeEdge extends St.Widget {
+    _init(ext) {
+        super._init({name: 'harborHomeEdge', reactive: true, layout_manager: new Clutter.BinLayout()});
+        this._ext = ext;
+        this._bar = new St.Widget({style_class: 'harbor-home-bar', x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER});
+        this.add_child(this._bar);
+        this._start = null;
+        this.connect('event', (_a, ev) => this._event(ev));
         this._relayout();
         this._monitorsId = Main.layoutManager.connect('monitors-changed', () => this._relayout());
     }
@@ -107,40 +99,100 @@ class EdgeSwipe extends St.Widget {
         const m = Main.layoutManager.primaryMonitor;
         if (!m)
             return;
-        const h = this._where === 'bottom' ? EDGE_HEIGHT : TOP_EDGE_HEIGHT;
-        this.set_position(m.x, this._where === 'bottom' ? m.y + m.height - h : m.y);
-        this.set_size(m.width, h);
+        this.set_position(m.x, m.y + m.height - EDGE_HEIGHT);
+        this.set_size(m.width, EDGE_HEIGHT);
     }
 
-    _touch(event) {
-        const type = event.type();
-        const [, y] = event.get_coords();
-        if (type === Clutter.EventType.TOUCH_BEGIN) {
-            this._startY = y;
-            this._bar?.add_style_pseudo_class('active');
-            return Clutter.EVENT_STOP;
+    _clearPause() {
+        if (this._pause) {
+            GLib.source_remove(this._pause);
+            this._pause = 0;
         }
-        if (this._startY === null)
-            return Clutter.EVENT_PROPAGATE;
-        if (type === Clutter.EventType.TOUCH_UPDATE) {
-            const moved = this._where === 'bottom' ? this._startY - y : y - this._startY;
-            if (moved > (this._where === 'bottom' ? SWIPE_DISTANCE : PULL_DISTANCE)) {
-                this._finish();
-                this._onSwipe();
+    }
+
+    _armPause() {
+        this._clearPause();
+        this._pause = GLib.timeout_add(GLib.PRIORITY_DEFAULT, PAUSE_MS, () => {
+            this._pause = 0;
+            if (this._start !== null && this._mode === 'drawer' && this._dy > PAUSE_MIN_PX) {
+                this._mode = 'switcher';
+                this._ext.drawer.hideNow();
+                this._ext.switcher.open();
             }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _event(ev) {
+        const t = ev.type();
+        const E = Clutter.EventType;
+        const [, y] = ev.get_coords();
+        const now = GLib.get_monotonic_time() / 1000;
+
+        // Mouse: click the home bar for the drawer, hold it for open apps.
+        if (t === E.BUTTON_PRESS && ev.get_button() === 1) {
+            this._clearPause();
+            this._mouseHeld = false;
+            this._pause = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                this._pause = 0;
+                this._mouseHeld = true;
+                this._ext.switcher.open();
+                return GLib.SOURCE_REMOVE;
+            });
             return Clutter.EVENT_STOP;
         }
-        if (type === Clutter.EventType.TOUCH_END || type === Clutter.EventType.TOUCH_CANCEL)
-            this._finish();
+        if (t === E.BUTTON_RELEASE && ev.get_button() === 1) {
+            this._clearPause();
+            if (!this._mouseHeld)
+                this._ext.drawer.toggle();
+            return Clutter.EVENT_STOP;
+        }
+
+        if (t === E.TOUCH_BEGIN) {
+            if (this._ext.switcher.isOpen || this._ext.drawer.isOpen)
+                return Clutter.EVENT_STOP;
+            this._start = y;
+            this._dy = 0;
+            this._lastY = y;
+            this._lastT = now;
+            this._v = 0;
+            this._mode = 'drawer';
+            this._bar.add_style_pseudo_class('active');
+            this._ext.drawer.beginDrag();
+            this._armPause();
+            return Clutter.EVENT_STOP;
+        }
+        if (this._start === null)
+            return Clutter.EVENT_PROPAGATE;
+        if (t === E.TOUCH_UPDATE) {
+            this._dy = this._start - y;
+            const dt = Math.max(1, now - this._lastT);
+            this._v = 0.7 * this._v + 0.3 * ((this._lastY - y) / dt);
+            if (Math.abs(this._lastY - y) > 4)
+                this._armPause();  // still moving: wait for a pause again
+            this._lastY = y;
+            this._lastT = now;
+            if (this._mode === 'drawer')
+                this._ext.drawer.dragTo(this._dy);
+            return Clutter.EVENT_STOP;
+        }
+        if (t === E.TOUCH_END || t === E.TOUCH_CANCEL) {
+            this._clearPause();
+            this._bar.remove_style_pseudo_class('active');
+            if (this._mode === 'drawer') {
+                if (t === E.TOUCH_CANCEL)
+                    this._ext.drawer.close();
+                else
+                    this._ext.drawer.endDrag(this._v);
+            }
+            this._start = null;
+            return Clutter.EVENT_STOP;
+        }
         return Clutter.EVENT_STOP;
     }
 
-    _finish() {
-        this._startY = null;
-        this._bar?.remove_style_pseudo_class('active');
-    }
-
     destroy() {
+        this._clearPause();
         if (this._monitorsId) {
             Main.layoutManager.disconnect(this._monitorsId);
             this._monitorsId = 0;
@@ -157,15 +209,15 @@ class TabletToggle extends QuickMenuToggle {
     _init(ext) {
         super._init({title: 'Tablet Mode', iconName: 'input-tablet-symbolic', toggleMode: false});
         this._ext = ext;
-        this.menu.setHeader('input-tablet-symbolic', 'Tablet Mode', 'Harbor home screen');
+        this.menu.setHeader('input-tablet-symbolic', 'Tablet Mode', 'Heirloom');
 
         this._items = {};
-        for (const [mode, label] of [
+        for (const [mode, text] of [
             ['auto', 'Automatic (follow the hinge)'],
             ['tablet', 'Always Tablet'],
             ['laptop', 'Always Laptop'],
         ]) {
-            const item = new PopupMenu.PopupMenuItem(label);
+            const item = new PopupMenu.PopupMenuItem(text);
             item.connect('activate', () => ext.setMode(mode));
             this.menu.addMenuItem(item);
             this._items[mode] = item;
@@ -204,8 +256,20 @@ export default class HarborTabletExtension extends Extension {
     enable() {
         this.mode = readMode();
         this._tablet = null;
+        this._launchedAt = 0;
         this._seat = Clutter.get_default_backend().get_default_seat();
         this._touchId = this._seat.connect('notify::touch-mode', () => this._update());
+
+        // The passcode keypad for the lock screen lives in its own extension; make
+        // sure it's on (it's off if extensions were ever switched by hand).
+        const KEYPAD = 'heirloom-keypad@heirloom.dev';
+        this._keypadId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+            this._keypadId = 0;
+            const list = global.settings.get_strv('enabled-extensions');
+            if (Main.extensionManager.lookup(KEYPAD) && !list.includes(KEYPAD))
+                global.settings.set_strv('enabled-extensions', [...new Set([...list, this.uuid, KEYPAD])]);
+            return GLib.SOURCE_REMOVE;
+        });
 
         this._indicator = new TabletIndicator(this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
@@ -214,8 +278,13 @@ export default class HarborTabletExtension extends Extension {
     }
 
     disable() {
+        if (this._keypadId) {
+            GLib.source_remove(this._keypadId);
+            this._keypadId = 0;
+        }
         // Always hand GNOME back exactly as we found it.
-        this._leaveTablet();
+        if (this._tablet)
+            this._leaveTablet();
         if (this._touchId) {
             this._seat.disconnect(this._touchId);
             this._touchId = 0;
@@ -241,7 +310,7 @@ export default class HarborTabletExtension extends Extension {
         try {
             writeMode(mode);
         } catch (e) {
-            console.warn(`Harbor: couldn't save mode: ${e}`);
+            console.warn(`Heirloom: couldn't save mode: ${e}`);
         }
         this._update();
     }
@@ -249,63 +318,65 @@ export default class HarborTabletExtension extends Extension {
     _update() {
         const tablet = this.isTablet();
         if (tablet !== this._tablet) {
+            const was = this._tablet;
             this._tablet = tablet;
             if (tablet)
                 this._enterTablet();
+            else if (was)
+                this._leaveTablet();
             else
-                this._leaveTablet(true);
+                this._oneDesktop(false);  // starting in laptop mode: undo anything left over
         }
         this._indicator?.toggle.sync();
     }
 
     // ---- tablet mode ------------------------------------------------------
     _enterTablet() {
-        // The Super key (and the Activities button) go Home instead.
-        if (!this._origToggle) {
-            this._origToggle = Main.overview.toggle;
-            Main.overview.toggle = () => this.goHome();
-        }
+        Main.layoutManager.uiGroup.add_style_class_name('heirloom-tablet');
 
-        if (!this._edge) {
-            this._edge = new EdgeSwipe('bottom', () => this.closeApp());
-            Main.layoutManager.addTopChrome(this._edge, {affectsInputRegion: true, trackFullscreen: false});
-        }
-        if (!this._topEdge) {
-            this._topEdge = new EdgeSwipe('top', () => this._revealPanel());
-            Main.layoutManager.addTopChrome(this._topEdge, {affectsInputRegion: true, trackFullscreen: false});
-        }
-        this._tuckPanel();
-        this._hookOverviewGesture();
+        this.drawer = new Drawer();
+        this.switcher = new Switcher(w => this._isAppWindow(w));
+        this._edge = new HomeEdge(this);
+        Main.layoutManager.addTopChrome(this._edge, {affectsInputRegion: true, trackFullscreen: false});
 
-        if (!this._windowId) {
-            this._windowId = global.display.connect('window-created', (_d, win) => this._placeNewWindow(win));
+        // The Super key, the hot corner and "show apps" open the drawer; the
+        // overview, desktops and their gestures are off.
+        this._origToggle = Main.overview.toggle;
+        Main.overview.toggle = () => this.drawer.toggle();
+        this._origShowApps = Main.overview.showApps;
+        Main.overview.showApps = () => this.drawer.open();
+        if (Main.overview._swipeTracker) {
+            this._overviewSwipe = Main.overview._swipeTracker.enabled;
+            Main.overview._swipeTracker.enabled = false;
         }
-        // Windows that were already open fill the screen too, and Harbor goes on every desktop.
+        this._oneDesktop(true);
+        this._statusBar(true);
+
+        this._windowId = global.display.connect('window-created', (_d, win) => this._placeNewWindow(win));
         for (const actor of global.get_window_actors()) {
-            const win = actor.meta_window;
-            if (!win)
-                continue;
-            if (this._isHarbor(win))
-                this._pinHarbor(win);
-            else
-                this._fill(win);
+            if (actor.meta_window) {
+                this._watchWindow(actor.meta_window);
+                this._fill(actor.meta_window);
+            }
         }
 
         if (Main.layoutManager._startingUp) {
-            // Right after login GNOME shows its overview; wait until it has
-            // finished starting up, then go Home.
             this._startupId = Main.layoutManager.connect('startup-complete', () => {
                 Main.layoutManager.disconnect(this._startupId);
                 this._startupId = 0;
-                if (this._tablet)
-                    this.goHome();
+                if (Main.overview.visible)
+                    Main.overview.hide();
+                this._ensureAnApp();
             });
         } else {
-            this.goHome();
+            if (Main.overview.visible)
+                Main.overview.hide();
+            this._ensureAnApp();
         }
     }
 
-    _leaveTablet(tuckHarborAway = false) {
+    _leaveTablet() {
+        Main.layoutManager.uiGroup.remove_style_class_name('heirloom-tablet');
         if (this._startupId) {
             Main.layoutManager.disconnect(this._startupId);
             this._startupId = 0;
@@ -314,56 +385,164 @@ export default class HarborTabletExtension extends Extension {
             Main.overview.toggle = this._origToggle;
             this._origToggle = null;
         }
-        for (const key of ['_edge', '_topEdge']) {
-            if (this[key]) {
-                Main.layoutManager.removeChrome(this[key]);
-                this[key].destroy();
-                this[key] = null;
-            }
+        if (this._origShowApps) {
+            Main.overview.showApps = this._origShowApps;
+            this._origShowApps = null;
         }
-        this._restorePanel();
-        this._unhookOverviewGesture();
+        if (this._overviewSwipe !== undefined && Main.overview._swipeTracker) {
+            Main.overview._swipeTracker.enabled = this._overviewSwipe;
+            this._overviewSwipe = undefined;
+        }
+        this._oneDesktop(false);
+        this._statusBar(false);
+        if (this._edge) {
+            Main.layoutManager.removeChrome(this._edge);
+            this._edge.destroy();
+            this._edge = null;
+        }
+        this.drawer?.destroy();
+        this.drawer = null;
+        this.switcher?.destroy();
+        this.switcher = null;
         if (this._windowId) {
             global.display.disconnect(this._windowId);
             this._windowId = 0;
         }
-        for (const win of this._harborWindows()) {
-            try {
-                win.unstick();
-            } catch (_e) { /* fine */ }
-            if (tuckHarborAway)
-                win.minimize();
+        if (this._ensureId) {
+            GLib.source_remove(this._ensureId);
+            this._ensureId = 0;
         }
     }
 
-    // ---- windows: full screen, and Harbor on every desktop -------------------
-    _isHarbor(win) {
-        return win.get_wm_class() === HARBOR_WM_CLASS;
+    // ---- one desktop while in tablet mode ------------------------------------------
+    // (Your desktop settings are put back when you leave tablet mode, even after a
+    //  restart in between: what they were is kept in ~/.config/harbor/desktops.json.)
+    _desktopsFile() {
+        return Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_config_dir(), 'harbor', 'desktops.json']));
     }
 
-    _pinHarbor(win) {
+    _oneDesktop(on) {
+        let mutter, wm;
         try {
-            if (!win.is_on_all_workspaces())
-                win.stick();
-        } catch (_e) { /* fine */ }
+            mutter = new Gio.Settings({schema_id: 'org.gnome.mutter'});
+            wm = new Gio.Settings({schema_id: 'org.gnome.desktop.wm.preferences'});
+        } catch (_e) {
+            return;
+        }
+        const file = this._desktopsFile();
+        let saved = null;
+        try {
+            saved = JSON.parse(new TextDecoder().decode(file.load_contents(null)[1]));
+        } catch (_e) { /* none */ }
+        if (on) {
+            if (!saved) {
+                saved = {dynamic: mutter.get_boolean('dynamic-workspaces'), num: wm.get_int('num-workspaces')};
+                try {
+                    file.get_parent().make_directory_with_parents(null);
+                } catch (_e) { /* there */ }
+                try {
+                    file.replace_contents(new TextEncoder().encode(JSON.stringify(saved)), null, false,
+                        Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+                } catch (_e) { /* fine */ }
+            }
+            mutter.set_boolean('dynamic-workspaces', false);
+            wm.set_int('num-workspaces', 1);
+            // Bring every window onto the one desktop.
+            const ws = global.workspace_manager.get_workspace_by_index(0);
+            for (const a of global.get_window_actors()) {
+                const w = a.meta_window;
+                if (w && !w.is_on_all_workspaces() && w.get_workspace() !== ws)
+                    w.change_workspace(ws);
+            }
+        } else if (saved) {
+            mutter.set_boolean('dynamic-workspaces', saved.dynamic ?? true);
+            wm.set_int('num-workspaces', saved.num || 4);
+            try {
+                file.delete(null);
+            } catch (_e) { /* fine */ }
+        }
+    }
+
+    // ---- the status bar ---------------------------------------------------------------
+    _statusBar(on) {
+        const panel = Main.panel;
+        const date = panel.statusArea.dateMenu;
+        const activities = panel.statusArea.activities;
+        if (on) {
+            activities?.container.hide();
+            if (date && !this._dateParent) {
+                this._dateParent = date.container.get_parent();
+                this._dateIndex = this._dateParent.get_children().indexOf(date.container);
+                this._dateParent.remove_child(date.container);
+                panel._leftBox.insert_child_at_index(date.container, 0);
+            }
+            if (!this._pullId)
+                this._pullId = panel.connect('captured-event', (_a, ev) => this._pullDown(ev));
+        } else {
+            activities?.container.show();
+            if (date && this._dateParent) {
+                date.container.get_parent()?.remove_child(date.container);
+                this._dateParent.insert_child_at_index(date.container, Math.max(0, this._dateIndex));
+                this._dateParent = null;
+            }
+            if (this._pullId) {
+                panel.disconnect(this._pullId);
+                this._pullId = 0;
+            }
+        }
+    }
+
+    _pullDown(ev) {
+        const t = ev.type();
+        const E = Clutter.EventType;
+        if (t === E.TOUCH_BEGIN) {
+            this._pull = ev.get_coords();
+            this._pulled = false;
+        } else if (t === E.TOUCH_UPDATE && this._pull && !this._pulled) {
+            const [, y] = ev.get_coords();
+            if (y - this._pull[1] > PULL_PX) {
+                this._pulled = true;
+                const right = this._pull[0] > Main.panel.get_transformed_position()[0] + Main.panel.width / 2;
+                const menu = right ? Main.panel.statusArea.quickSettings.menu : Main.panel.statusArea.dateMenu.menu;
+                if (!menu.isOpen)
+                    menu.open();
+            }
+        } else if (t === E.TOUCH_END || t === E.TOUCH_CANCEL) {
+            this._pull = null;
+        }
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    // ---- windows: full screen, and always one in front ------------------------------
+    _isAppWindow(win) {
+        return Boolean(win) && win.get_window_type() === Meta.WindowType.NORMAL &&
+            !win.get_transient_for() && !win.is_skip_taskbar();
     }
 
     _fill(win) {
-        if (!this._tablet || !win || win.get_window_type() !== Meta.WindowType.NORMAL)
-            return;
-        if (this._isHarbor(win) || win.get_transient_for() || !win.can_maximize())
+        if (!this._tablet || !this._isAppWindow(win) || !win.can_maximize())
             return;
         maximize(win);
     }
 
+    _watchWindow(win) {
+        if (win._heirloomWatched)
+            return;
+        win._heirloomWatched = true;
+        win.connect('unmanaged', () => {
+            if (this._tablet)
+                this._queueEnsure();
+        });
+    }
+
     _placeNewWindow(win) {
-        // Apps often set their own size as they appear, so fill the screen at
-        // a few moments: once GNOME is idle, at the first frame, and a bit later.
+        this._watchWindow(win);
+        if (this.drawer?.isOpen)
+            this.drawer.hideNow();
+        // Apps often set their own size as they appear, so fill the screen at a
+        // few moments: once GNOME is idle, at the first frame, and a bit later.
         GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-            if (this._isHarbor(win))
-                this._pinHarbor(win);
-            else
-                this._fill(win);
+            this._fill(win);
             return GLib.SOURCE_REMOVE;
         });
         const actor = win.get_compositor_private();
@@ -379,159 +558,32 @@ export default class HarborTabletExtension extends Extension {
         });
     }
 
-    // ---- GNOME's top bar: tucked away, pulled down from the top edge ---------
-    _tuckPanel() {
-        if (this._panelTucked)
-            return;
-        const box = Main.layoutManager.panelBox;
-        try {
-            // Stop it reserving space at the top, so apps use the whole screen.
-            Main.layoutManager.untrackChrome(box);
-            Main.layoutManager.trackChrome(box, {affectsStruts: false, affectsInputRegion: true, trackFullscreen: false});
-        } catch (e) {
-            console.warn(`Harbor: couldn't free the top bar's space: ${e}`);
-        }
-        box.translation_y = -box.height;
-        box.hide();
-        this._panelTucked = true;
+    _appWindows() {
+        return global.get_window_actors().map(a => a.meta_window).filter(w => this._isAppWindow(w));
     }
 
-    _restorePanel() {
-        if (!this._panelTucked)
-            return;
-        if (this._panelTimer) {
-            GLib.source_remove(this._panelTimer);
-            this._panelTimer = 0;
-        }
-        const box = Main.layoutManager.panelBox;
-        box.remove_all_transitions();
-        try {
-            Main.layoutManager.untrackChrome(box);
-            Main.layoutManager.trackChrome(box, {affectsStruts: true, trackFullscreen: true});
-        } catch (e) {
-            console.warn(`Harbor: couldn't restore the top bar: ${e}`);
-        }
-        box.translation_y = 0;
-        box.show();
-        this._panelTucked = false;
-    }
-
-    _revealPanel() {
-        if (!this._panelTucked)
-            return;
-        const box = Main.layoutManager.panelBox;
-        box.show();
-        box.ease({translation_y: 0, duration: 180, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
-        if (this._panelTimer)
-            GLib.source_remove(this._panelTimer);
-        let idle = 0;
-        this._panelTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
-            // Stay while a menu from the top bar (Quick Settings, the calendar) is open.
-            idle = Main.panel.menuManager.activeMenu ? 0 : idle + 1;
-            if (idle < PANEL_SHOW_SECONDS)
-                return GLib.SOURCE_CONTINUE;
-            this._panelTimer = 0;
-            this._hidePanel();
+    _queueEnsure() {
+        if (this._ensureId)
+            GLib.source_remove(this._ensureId);
+        this._ensureId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 700, () => {
+            this._ensureId = 0;
+            this._ensureAnApp();
             return GLib.SOURCE_REMOVE;
         });
     }
 
-    _hidePanel() {
-        if (!this._panelTucked)
+    // There's always an app in front: after starting up, and when the last one closes.
+    _ensureAnApp() {
+        if (!this._tablet || this._appWindows().length)
             return;
-        const box = Main.layoutManager.panelBox;
-        box.ease({
-            translation_y: -box.height,
-            duration: 180,
-            mode: Clutter.AnimationMode.EASE_IN_QUAD,
-            onComplete: () => {
-                if (this._panelTucked)
-                    box.hide();
-            },
-        });
-    }
-
-    // ---- three fingers up, then up again: a new desktop ----------------------
-    _hookOverviewGesture() {
-        const controls = Main.overview._overview?.controls;
-        if (!controls || this._origGestureEnd)
+        const now = GLib.get_monotonic_time() / 1e6;
+        if (now - this._launchedAt < 15)
+            return;  // one is on its way
+        const favorites = loadConfig().dock ?? DEFAULT_FAVORITES;
+        const app = [FRONT_APP, ...favorites].map(id => lookupApp(id)).find(Boolean);
+        if (!app)
             return;
-        this._origGestureEnd = controls.gestureEnd;
-        const orig = this._origGestureEnd;
-        controls.gestureEnd = (target, duration, onComplete) => {
-            if (target < APP_GRID || !this._tablet) {
-                orig.call(controls, target, duration, onComplete);
-                return;
-            }
-            // Instead of GNOME's app grid (Harbor is the app grid), settle on the
-            // desktops view, then go to a fresh desktop with Harbor on it.
-            orig.call(controls, 1, duration, onComplete);
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, duration + 60, () => {
-                this.newDesktop();
-                return GLib.SOURCE_REMOVE;
-            });
-        };
-    }
-
-    _unhookOverviewGesture() {
-        const controls = Main.overview._overview?.controls;
-        if (controls && this._origGestureEnd)
-            controls.gestureEnd = this._origGestureEnd;
-        this._origGestureEnd = null;
-    }
-
-    newDesktop() {
-        const wm = global.workspace_manager;
-        const time = global.get_current_time();
-        // With GNOME's automatic desktops the last one is always empty: use it,
-        // or add one if it isn't.
-        let target = wm.get_workspace_by_index(wm.get_n_workspaces() - 1);
-        const busy = target.list_windows().some(w => !w.is_on_all_workspaces() &&
-            w.get_window_type() === Meta.WindowType.NORMAL);
-        if (busy || target === wm.get_active_workspace())
-            target = wm.append_new_workspace(false, time);
-        target.activate(time);
-        this.goHome();
-    }
-
-    // ---- the swipe up: close the app you're in -------------------------------
-    closeApp() {
-        if (Main.overview.visible) {
-            Main.overview.hide();
-            return;
-        }
-        const win = global.display.get_focus_window();
-        if (win && !this._isHarbor(win) && win.get_window_type() !== Meta.WindowType.DESKTOP) {
-            if (win.can_close())
-                win.delete(global.get_current_time());
-            else
-                win.minimize();
-        }
-        this.goHome();
-    }
-
-    // ---- going home -----------------------------------------------------------
-    _harborWindows() {
-        return global.get_window_actors()
-            .map(a => a.meta_window)
-            .filter(w => w && this._isHarbor(w));
-    }
-
-    goHome() {
-        if (Main.overview.visible)
-            Main.overview.hide();
-        const app = Shell.AppSystem.get_default().lookup_app(HARBOR_APP_ID);
-        if (!app) {
-            Main.notify('Harbor isn’t installed', 'Run Harbor’s install.sh to set up the home screen.');
-            return;
-        }
-        const wins = this._harborWindows();
-        if (wins.length) {
-            // Raise Home and ask it to return to its first page.
-            Main.activateWindow(wins[0]);
-            app.activate();
-        } else {
-            app.activate();
-        }
+        this._launchedAt = now;
+        app.activate();
     }
 }

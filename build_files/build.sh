@@ -62,6 +62,25 @@ bash "$CTX/build_files/screenroom.sh"
 # Tablet Mode extension, installed for everyone.
 cp -r "$CTX/apps/harbor/shell-extension/harbor-tablet@harbor.dev" \
     /usr/share/gnome-shell/extensions/
+# The passcode keypad: in your session, on the lock screen and on the login screen.
+cp -r "$CTX/apps/harbor/shell-extension/heirloom-keypad@heirloom.dev" \
+    /usr/share/gnome-shell/extensions/
+install -Dm755 "$CTX/system_files/usr/libexec/heirloom-lockscreen" /usr/libexec/heirloom-lockscreen
+install -d -m 0755 /usr/lib/tmpfiles.d
+printf 'd /var/lib/heirloom 0755 root root -\nd /var/lib/heirloom/passcode 0755 root root -\n' \
+    > /usr/lib/tmpfiles.d/heirloom.conf
+
+# Wrong passcodes: after 5 in a row, wait 5 minutes (so a short passcode can't be guessed).
+if command -v authselect >/dev/null; then
+    authselect enable-feature with-faillock || echo "authselect: couldn't turn on the lockout" >&2
+fi
+mkdir -p /etc/security
+cat > /etc/security/faillock.conf <<'EOF'
+# Heirloom: lock an account for 5 minutes after 5 wrong passwords or passcodes in a row.
+deny = 5
+unlock_time = 300
+fail_interval = 900
+EOF
 
 # ---- 3. look, defaults and branding ----------------------------------------------
 cp -r "$CTX/system_files/etc/." /etc/

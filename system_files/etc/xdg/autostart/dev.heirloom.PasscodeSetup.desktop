@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Set Up Your Passcode
+Comment=Asks you to choose a passcode the first time you log in
+Exec=harbor --setup-if-needed
+Icon=dev.harbor.Harbor
+NoDisplay=true
+X-GNOME-Autostart-Phase=Applications
+X-GNOME-Autostart-enabled=true

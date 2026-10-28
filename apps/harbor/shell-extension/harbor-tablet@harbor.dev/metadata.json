@@ -1,7 +1,7 @@
 {
   "uuid": "harbor-tablet@harbor.dev",
-  "name": "Harbor Tablet Mode",
-  "description": "Fold your 2-in-1 into a tablet and Harbor becomes your home screen: apps open full screen, a swipe up from the bottom edge closes the app, a pull down from the top edge shows the top bar, and three fingers up twice makes a new desktop. Open it back into a laptop for a normal desktop.",
+  "name": "Heirloom Tablet Mode",
+  "description": "Heirloom's tablet mode: fold your 2-in-1 into a tablet for a locked-down, iPad-like interface — an app always in front, a status bar, a swipe-up app drawer and a swipe-and-pause view of open apps. Open it back into a laptop for plain GNOME.",
   "shell-version": [
     "46",
     "47",
@@ -10,6 +10,6 @@
     "50",
     "51"
   ],
-  "version": 2,
+  "version": 3,
   "url": ""
 }

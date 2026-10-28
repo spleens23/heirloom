@@ -7,9 +7,11 @@ and a bad update can be undone from the boot menu.
 
 **What's inside**
 
-- **Harbor**, the home screen: pages of apps, a clock, a glass dock and search
-- **Tablet Mode**: folding the screen back brings Harbor forward, and the
-  Super key or a swipe up from the bottom edge goes Home
+- **Tablet Mode**: fold the screen back for a locked-down, iPad-like tablet: an app
+  always in front, a status bar, a swipe-up app drawer, swipe-and-pause for open
+  apps, and a passcode keypad on the lock and login screens (see
+  [apps/harbor](apps/harbor/README.md)). Open it up for normal GNOME.
+- **Tablet Settings**: wallpaper, lock-screen picture and passcode
 - **Spectacle**, a video app with subscriptions, Watch Later and downloads
 - **Screenroom**, your own films and TV shows, and **Parlor**, your music (from [Screenroom](https://github.com/spleens23/screenroom); updated with the system)
 - **Weather**, which finds any city (forecasts from Open-Meteo)
@@ -38,7 +40,7 @@ and a bad update can be undone from the boot menu.
 3. Follow the installer: language, disk (**this erases the disk**), then your
    name and password.
 4. After the first boot, connect to Wi-Fi. Heirloom quietly installs the extra
-   apps in the background; they appear in Harbor over the next few minutes.
+   apps in the background; they appear in the app drawer over the next few minutes.
 
 ## Updates
 
@@ -48,7 +50,7 @@ your files and apps are never touched by an update.
 **Over the internet (automatic):** Heirloom downloads new versions quietly in
 the background. They take effect the next time you restart.
 
-**Software Update app:** open **Software Update** (also in Harbor's settings)
+**Software Update app:** open **Software Update** (also in Tablet Settings)
 to check, download and restart on your own schedule, or to undo an update.
 
 **From a USB stick** (no Wi-Fi, or a faster connection elsewhere):

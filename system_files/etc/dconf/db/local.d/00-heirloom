@@ -1,8 +1,8 @@
 # Heirloom's default settings. Anything you change in Settings overrides these.
 
 [org/gnome/shell]
-enabled-extensions=['harbor-tablet@harbor.dev']
-favorite-apps=['dev.harbor.Harbor.desktop', 'dev.spectacle.Spectacle.desktop', 'dev.screenroom.Screenroom.desktop', 'dev.screenroom.Parlor.desktop', 'org.mozilla.firefox.desktop', 'org.gnome.Nautilus.desktop', 'com.valvesoftware.Steam.desktop', 'org.gnome.Ptyxis.desktop']
+enabled-extensions=['harbor-tablet@harbor.dev', 'heirloom-keypad@heirloom.dev']
+favorite-apps=['dev.spectacle.Spectacle.desktop', 'dev.screenroom.Screenroom.desktop', 'dev.screenroom.Parlor.desktop', 'org.mozilla.firefox.desktop', 'org.gnome.Nautilus.desktop', 'com.valvesoftware.Steam.desktop', 'org.gnome.Ptyxis.desktop']
 welcome-dialog-last-shown-version='999'
 
 [org/gnome/desktop/background]
@@ -18,6 +18,9 @@ picture-options='zoom'
 color-scheme='default'
 accent-color='blue'
 clock-format='12h'
+clock-show-weekday=true
+clock-show-date=true
+show-battery-percentage=true
 
 [org/gnome/desktop/peripherals/touchpad]
 tap-to-click=true
